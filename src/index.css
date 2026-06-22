@@ -1,0 +1,16 @@
+/* 💡 가로는 완벽하게 잠그고, 세로 방향으로만 부드럽게 스크롤 되도록 모바일 터치 축을 전면 개방합니다. */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  min-height: 100vh;
+  background-color: #050a14 !important;
+  color: white;
+  
+  overflow-x: hidden;        /* 👈 가로(좌우) 스크롤은 흔들림 없이 전면 차단 */
+  overflow-y: auto;          /* 👈 세로(위아래) 스크롤바 정상 개방 */
+  
+  touch-action: pan-y;       /* 👈 아이패드/폰 손가락 터치 쓸어내리기를 위아래 방향으로만 허용 */
+  -webkit-overflow-scrolling: touch; /* iOS 사파리 부드러운 가속 스크롤 주입 */
+  -webkit-tap-highlight-color: transparent;
+}
