@@ -40,7 +40,7 @@ function BackingTrackPlayer({ onFileLoaded }) {
         onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#4b5563'}
         onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#374151'}
       >
-        파일 선택
+        File Select
         <input 
           type="file" 
           accept="audio/*, .mp3, .m4a, .wav, .aac, audio/mp3, audio/x-m4a, audio/mpeg" 
