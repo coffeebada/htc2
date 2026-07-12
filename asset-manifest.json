@@ -1,13 +1,13 @@
 {
   "files": {
     "main.css": "/htc2/static/css/main.530cfb33.css",
-    "main.js": "/htc2/static/js/main.c2abea7b.js",
+    "main.js": "/htc2/static/js/main.ee704909.js",
     "index.html": "/htc2/index.html",
     "main.530cfb33.css.map": "/htc2/static/css/main.530cfb33.css.map",
-    "main.c2abea7b.js.map": "/htc2/static/js/main.c2abea7b.js.map"
+    "main.ee704909.js.map": "/htc2/static/js/main.ee704909.js.map"
   },
   "entrypoints": [
     "static/css/main.530cfb33.css",
-    "static/js/main.c2abea7b.js"
+    "static/js/main.ee704909.js"
   ]
 }
