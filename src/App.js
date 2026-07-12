@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import * as Tone from 'tone';
 import { Play, Pause, Mic, Settings, Home } from 'lucide-react';
-import BackingTrackPlayer from './BackingTrackPlayer';
+
 
 // (기존 다이아토닉 5도권 keysCircleData 및 romanDegrees, fixedPositionLabels 구조는 통합 유지)
 const keysCircleData = [
@@ -63,10 +63,15 @@ const TREMOLO_KEYS = {
   'C': 0, 'C#': 1, 'D': 2, 'D#': 3
 };
 
+/// =========================================================================
+// 🎯 [교정 완결] 트레몰로 메이저/마이너 베이스 C키 오프셋 듀얼 매트릭스
 // =========================================================================
-// 🎯 [교정 완결] 트레몰로 베이스 C키 오프셋 매트릭스 (정규식 이스케이프 문법 세척)
-// =========================================================================
-const TREMOLO_BASE_C_KEY = "-5,2,0,5,4,9,7,11,12,14,16,17,19,21,24,23,28,26,31,29,36,33,40,35".split(",").map(n => parseInt(n, 10));
+const TREMOLO_BASE_MAJOR = 
+  "-5,2,0,5,4,9,7,11,12,14,16,17,19,21,24,23,28,26,31,29,36,33,40,35".split(",").map(n => parseInt(n, 10));
+
+// 💡 연주자님 요청 사양: E3부터 G#6까지 마이너 정밀 음 배열 전격 주입 (C키 오프셋 거리로 치환)
+const TREMOLO_BASE_MINOR = 
+  "-8,-1,-3,2,0,5,4,8,9,11,12,14,16,17,21,20,24,23,28,26,33,29,36,32".split(",").map(n => parseInt(n, 10));
 
 // =========================================================================
 // 🎯 [글로벌 UI 고도화] 마우스 드래그, 텍스트 블록 지정, 롱클릭 전면 차단 고정 가드
@@ -79,6 +84,76 @@ const GLOBAL_NO_SELECT_STYLE = {
   WebkitTouchCallout: 'none',
   cursor: 'default'
 };
+// =========================================================================
+// 🎨 [신규 개설] 옥타브 기반 글자 및 옥타브 도트 동기화 컬러 맵 매트릭스
+// =========================================================================
+const getOctaveColor = (noteName) => {
+  if (!noteName) return "#ffffff"; // 기본 흰색
+  
+  // 음이름 문자열에서 숫자(옥타브)만 정밀 추출
+  const match = noteName.match(/\d+/);
+  if (!match) return "#ffffff";
+  
+  const octave = parseInt(match, 10);
+
+  // 연주자님 지정 사양 칼같이 매핑 (3옥: 주황, 4옥: 파랑, 5옥: 흰색, 6옥: 빨강, 7옥: 자주)
+  switch (octave) {
+    case 3: 
+      return "#ff9800"; // 주황색 (Orange)
+    case 4: 
+      return "#3b82f6"; // 파란색 (Blue)
+    case 5: 
+      return "#ffffff"; // 흰색 (White)
+    case 6: 
+      return "#ef4444"; // 빨간색 (Red)
+    case 7: 
+      return "#a855f7"; // 자주색 (Purple)
+    default: 
+      return "#cbd5e1"; // 예외 음역대 디폴트 연회색
+  }
+};
+
+// =========================================================================
+// 🎯 [교정 완결] 제공 이미지 기반 둥근 모서리 정삼각형/역삼각형 가이드 엔진 (회색 테두리 반영)
+// =========================================================================
+function HarmonicaTriangleArrow({ isOddHole }) {
+  // 공통 둥근 정삼각형 패스 (Blow)
+  const trianglePath = "M 50,18 L 82,73 A 8,8 0 0,1 75,85 L 25,85 A 8,8 0 0,1 18,73 Z";
+  
+  // 공통 둥근 역삼각형 패스 (Draw)
+  const inversePath = "M 50,82 L 18,27 A 8,8 0 0,1 25,15 L 75,15 A 8,8 0 0,1 82,27 Z";
+
+  return (
+    <svg 
+      viewBox="0 0 100 100" 
+      preserveAspectRatio="xMidYMid meet"
+      style={{ width: '65%', height: '65%', overflow: 'visible', pointerEvents: 'none' }}
+    >
+      {isOddHole ? (
+        /* 🔺 1) 홀수 홀 (불기 - Blow) : 검정 삼각형 + 중간 밝기 회색 테두리 */
+        <path
+          d={trianglePath}
+          fill="#000000"       // 내부 알맹이는 순수 검정색
+          stroke="#94a3b8"     // 테두리는 눈이 편안한 중간 밝기의 회색 (Slate-400 대역)
+          strokeWidth="6"      // 정갈하고 선명하게 도드라지는 최적의 두께
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      ) : (
+        /* 🔻 2) 짝수 홀 (마시기 - Draw) : 흰색 바탕 둥근 역삼각형 + 검정 테두리선 */
+        <path
+          d={inversePath}
+          fill="#ffffff"
+          stroke="#000000"
+          strokeWidth="5"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+      )}
+    </svg>
+  );
+}
+
 // =========================================================================
 // 🎯 [교정 완결] C4 ~ B4 대역(9~14, 16번 홀) 점 소각형 절대 옥타브 추적 도트 엔진
 // =========================================================================
@@ -154,7 +229,7 @@ export default function SingleFileAppRouter() {
 function MainMenuHub({ onSelectMode }) {
   const hubStyle = {
     container: { width: '100vw', minHeight: '100vh', backgroundColor: '#050a14', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', fontFamily: '"Noto Sans KR", sans-serif', padding: '40px 20px' },
-    title: { fontSize: 'calc(22px + 1.4vw)', fontWeight: '700', color: '#10b981', marginBottom: '10px', letterSpacing: '-1px', textAlign: 'center' },
+    title: { fontSize: 'calc(22px + 1.4vw)', fontWeight: '700', color: '#59ff00', marginBottom: '10px', letterSpacing: '-1px', textAlign: 'center' },
     subtitle: { fontSize: '15px', fontWeight: '600', color: '#64748b', marginBottom: '40px', textAlign: 'center' },
     grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', width: '100%', maxWidth: '1200px', boxSizing: 'border-box' },
     card: { background: '#111827', border: '1px solid #1e293b', borderRadius: '24px', padding: '30px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.2s ease', boxShadow: '0 10px 30px rgba(0,0,0,0.3)', userSelect: 'none' },
@@ -164,22 +239,22 @@ function MainMenuHub({ onSelectMode }) {
 
   return (
     <div style={hubStyle.container}>
-      <h1 style={hubStyle.title}>Harmonica Master Training Portal</h1>
-      <p style={hubStyle.subtitle}>원하시는 하모니카 트레이닝 코스를 전격 선택하세요</p>
+      <h1 style={hubStyle.title}>Harmonica Training Center Home</h1>
+      <p style={hubStyle.subtitle}>원하시는 하모니카 트레이닝 코스 선택하세요</p>
       
       <div style={hubStyle.grid}>
-        <div style={hubStyle.card} onClick={() => onSelectMode('/diatonic')} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#2563eb'; e.currentTarget.style.transform = 'translateY(-5px)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#1e293b'; e.currentTarget.style.transform = 'translateY(0)'; }}>
+        <div style={hubStyle.card} onClick={() => onSelectMode('/diatonic')} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#59ff00'; e.currentTarget.style.transform = 'translateY(-5px)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#1e293b'; e.currentTarget.style.transform = 'translateY(0)'; }}>
           <span style={hubStyle.cardTitle}>Diatonic</span>
           <p style={hubStyle.cardDesc}>다이아토닉 하모니카 트레이닝센터<br />다양한 튜닝과 스케일 모드연습</p>
         </div>
 
-        <div style={hubStyle.card} onClick={() => onSelectMode('/chromatic')} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#10b981'; e.currentTarget.style.transform = 'translateY(-5px)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#1e293b'; e.currentTarget.style.transform = 'translateY(0)'; }}>
+        <div style={hubStyle.card} onClick={() => onSelectMode('/chromatic')} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#59ff00'; e.currentTarget.style.transform = 'translateY(-5px)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#1e293b'; e.currentTarget.style.transform = 'translateY(0)'; }}>
           <span style={hubStyle.cardTitle}>Chromatic</span>
           <p style={hubStyle.cardDesc}>크로매틱 하모니카 트레이닝센터<br />다양한 튜닝과 스케일 모드연습</p>
         </div>
 
         {/* 🎯 [신규] 트레몰로 하모니카 진입 카드 추가 */}
-        <div style={hubStyle.card} onClick={() => onSelectMode('/tremolo')} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#a855f7'; e.currentTarget.style.transform = 'translateY(-5px)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#1e293b'; e.currentTarget.style.transform = 'translateY(0)'; }}>
+        <div style={hubStyle.card} onClick={() => onSelectMode('/tremolo')} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#59ff00'; e.currentTarget.style.transform = 'translateY(-5px)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#1e293b'; e.currentTarget.style.transform = 'translateY(0)'; }}>
           <span style={{ ...hubStyle.cardTitle}}>Tremolo</span>
           <p style={hubStyle.cardDesc}>트레몰로 하모니카 트레이닝센터<br />메이저 마이너 스케일</p>
         </div>
@@ -364,24 +439,88 @@ const CHROMATIC_TUNINGS = {
 };
     
 // =========================================================================
-// 🎯 [교정 완결] 화면 폭 수축 시 옥타브 도트 수직 겹침 간섭을 완벽 차단한 NoteBox 엔진
+// 🎯 [완치 개조 완결] 다이아토닉 전용 플랫(b) 도수 매트릭스(2b, 3b, 5b, 6b, 7b) 변환 엔진
 // =========================================================================
-function NoteBox({ semi, getNote, activeNote, cents, limit, onStart, onStop, isBlowZone, isDrawZone, isTopBb, holeNum, showOverbanding, selectedTuning, scaleNotesResult, useScaleHighlight, isSliderZone, isTremoloMode, tremoloLabelFn }) {
+const getCommonDisplayLabel = (noteName, displayLabelType, isTremoloMode) => {
+  if (!noteName) return "";
+  
+  // 옥타브 숫자를 임시 격리하여 조표 정밀 가공 진입
+  let pureLabel = noteName.replace(/\d+/g, '')
+    .replace(/[\u0300-\u036f\u0307\u0308\u0323\u0324]/g, '')
+    .normalize('NFC')
+    .trim();
+
+  // 🎯 다이아토닉 및 크로마틱 룸에서는 무조건 b(플랫) 형태로 선명하게 디스플레이 이조
+  if (!isTremoloMode) {
+    if (pureLabel === "C#") pureLabel = "Db";
+    if (pureLabel === "D#") pureLabel = "Eb";
+    if (pureLabel === "F#") pureLabel = "Gb";
+    if (pureLabel === "G#") pureLabel = "Ab";
+    if (pureLabel === "A#") pureLabel = "Bb";
+  } else {
+    if (pureLabel === "Db") pureLabel = "C#";
+    if (pureLabel === "Eb") pureLabel = "D#";
+    if (pureLabel === "Gb") pureLabel = "F#";
+    if (pureLabel === "Ab") pureLabel = "G#";
+    if (pureLabel === "Bb") pureLabel = "A#";
+  }
+
+  // 💡 도수 표시 옵션 모드가 가동되었을 때 반환하는 절대 도수 칩
+  if (displayLabelType === 'DEG') {
+    if (!isTremoloMode) {
+      // 🅰️/🅱️ 다이아토닉 및 크로마틱 전용: 샵(#) 표기를 지우고 플랫(b) 도수로 전격 개조
+      const names = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+      const sharpNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+      
+      let matchedIndex = names.indexOf(pureLabel);
+      if (matchedIndex === -1) matchedIndex = sharpNames.indexOf(pureLabel);
+      
+      if (matchedIndex !== -1) {
+        // 🎯 [연주자님 지침 정밀 정합]: 1, 2b, 2, 3b, 3, 4, 5b, 5, 6b, 6, 7b, 7 황금 화성학 도수 매핑
+        const degreeMap = ["1", "2b", "2", "3b", "3", "4", "5b", "5", "6b", "6", "7b", "7"];
+        return degreeMap[matchedIndex];
+      }
+    } else {
+      // 🆃 트레몰로 하모니카 전용: 기존의 순정 샵(#) 도수 규칙 수호 유지
+      const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+      const flatNames = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+      
+      let matchedIndex = names.indexOf(pureLabel);
+      if (matchedIndex === -1) matchedIndex = flatNames.indexOf(pureLabel);
+      
+      if (matchedIndex !== -1) {
+        const degreeMap = ["1", "1#", "2", "2#", "3", "4", "4#", "5", "5#", "6", "6#", "7"];
+        return degreeMap[matchedIndex];
+      }
+    }
+  }
+  return pureLabel;
+};
+
+function NoteBox({ semi, getNote, activeNote, cents, limit, onStart, onStop, isBlowZone, isDrawZone, isTopBb, holeNum, showOverbanding, selectedTuning, scaleNotesResult, useScaleHighlight, isSliderZone, isTremoloMode, tremoloLabelFn, displayLabelType }) {
   const noteName = getNote(semi);
   if (semi === null || !noteName) return <div style={{ width: '100%', height: '100%', margin: '3px 0' }}></div>;
   
   const isActive = activeNote === noteName;
-  
-  let displayLabel = (isTremoloMode && typeof tremoloLabelFn === 'function') 
-    ? tremoloLabelFn(noteName) 
-    : noteName.replace(/\d+/g, '');
-    
-  displayLabel = displayLabel
-    .replace(/[\u0300-\u036f\u0307\u0308\u0323\u0324]/g, '')
-    .normalize('NFC')
-    .replace(/[Åå]/g, 'A').replace(/[Ėė]/g, 'E').replace(/[Ċċ]/g, 'C')
-    .replace(/[Ġġ]/g, 'G').replace(/[Ḃḃ]/g, 'B').replace(/[Ḋḋ]/g, 'D');
+  const rawNoteWithOctave = noteName; 
 
+  let displayLabel = isTremoloMode 
+    ? (typeof tremoloLabelFn === 'function' ? tremoloLabelFn(noteName) : getCommonDisplayLabel(noteName, displayLabelType, true))
+    : getCommonDisplayLabel(noteName, displayLabelType, false);
+    
+  // 💡 플랫(b) 기호가 포함된 도수 글자('2b', '3b', '5b', '6b', '7b')가 필터에 짤려 유실되지 않도록 정규식 안전 가드 고도화
+  const isDegreeMode = /^[1-7][#b]?$/.test(displayLabel.trim());
+  if (!isDegreeMode) {
+    displayLabel = displayLabel.replace(/\d+/g, '')
+      .replace(/[\u0300-\u036f\u0307\u0308\u0323\u0324]/g, '')
+      .normalize('NFC')
+      .replace(/[Åå]/g, 'A').replace(/[Ėė]/g, 'E').replace(/[Ċċ]/g, 'C')
+      .replace(/[Ġġ]/g, 'G').replace(/[Ḃḃ]/g, 'B').replace(/[Ḋḋ]/g, 'D');
+  }
+
+// =========================================================================
+// 🧩 [1/2 마감선] -> 성공적으로 덮어쓰신 후 "다음"을 입력해 주세요!
+// =========================================================================
   const safeCents = Math.max(-limit, Math.min(limit, cents));
   const indicatorLeft = 50 + (safeCents / limit) * 40;
   
@@ -391,7 +530,7 @@ function NoteBox({ semi, getNote, activeNote, cents, limit, onStart, onStop, isB
   if (isActive) { 
     bgColor = Math.abs(cents) <= limit ? '#22c55e' : (cents > limit ? '#eab308' : '#ef4444'); 
   } else { 
-    if (isSliderZone) { bgColor = '#60a5fa'; } 
+    if (isSliderZone) { bgColor = '#00254e'; } 
     else if (isTopBb) { bgColor = '#93c5fd'; } 
     else if (isBlowZone) {
       if (holeNum >= 1 && holeNum <= 6 && !isTremoloMode) { bgColor = '#ef4444'; }
@@ -406,37 +545,34 @@ function NoteBox({ semi, getNote, activeNote, cents, limit, onStart, onStop, isB
     }
   }
 
-  const isScaleComponent = scaleNotesResult && scaleNotesResult.includes(noteName.replace(/\d+/g, ''));
-  let textColor = 'white';
+  const isScaleComponent = scaleNotesResult && scaleNotesResult.includes(rawNoteWithOctave.replace(/\d+/g, ''));
+  const dynamicThemeColor = isTremoloMode ? getOctaveColor(rawNoteWithOctave) : '#ffffff';
+  
+  let textColor = dynamicThemeColor;
   if (useScaleHighlight && !isActive && isScaleComponent) { textColor = '#facc15'; }
 
-  // 실시간 절대 노트 주파수 기반 자동 도트 연산 바인딩
-  const dotsInfo = isTremoloMode ? calculateAbsoluteOctaveDots(noteName) : { position: 'none', count: 0 };
+  // 🎯 다이아토닉 및 크로마틱 모드에서도 도수 표시(`DEG`) 작동 시 절대 옥타브 가드 연동 수립
+  const dotsInfo = (isTremoloMode || displayLabelType === 'DEG') 
+    ? calculateAbsoluteOctaveDots(rawNoteWithOctave) 
+    : { position: 'none', count: 0 };
 
-  // 🎯 [완치 완결]: 글자와의 절대 거리 안전 마진을 강제 확보하는 스택형 도트 생성 링커
   const renderOctaveDots = () => {
     if (dotsInfo.position === 'none' || dotsInfo.count === 0) return null;
-    
-    // 💡 top인 경우 박스 천장에, bottom인 경우 박스 바닥에 수직으로 일정한 비율 여백 보존
-    const verticalAlignStyle = dotsInfo.position === 'top' ? { top: '3px' } : { bottom: '3px' };
+    const verticalAlignStyle = dotsInfo.position === 'top' 
+    ? { top: '5px' } 
+    : { bottom: '5px' };
     
     return (
       <div style={{
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        ...verticalAlignStyle,
-        display: 'flex',
-        flexDirection: 'row',
-        justifyContent: 'center',
-        alignItems: 'center',
-        gap: '4px', 
-        height: '8px',
-        pointerEvents: 'none',
-        zIndex: 15
+        position: 'absolute', left: 0, right: 0, ...verticalAlignStyle,
+        display: 'flex', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: '4px', height: '8px', pointerEvents: 'none', zIndex: 15
       }}>
         {Array.from({ length: dotsInfo.count }).map((_, dIdx) => (
-          <div key={dIdx} style={{ width: '4px', height: '4px', backgroundColor: '#ffffff', borderRadius: '50%', boxShadow: '0 1px 2px rgba(0,0,0,0.8)' }} />
+          <div key={dIdx} style={{ 
+            width: '4px', height: '4px', 
+            backgroundColor: isTremoloMode ? dynamicThemeColor : '#ffffff', 
+            borderRadius: '50%', boxShadow: '0 1px 2px rgba(0,0,0,0.8)' 
+          }} />
         ))}
       </div>
     );
@@ -445,57 +581,49 @@ function NoteBox({ semi, getNote, activeNote, cents, limit, onStart, onStop, isB
   return (
     <div 
       style={{ 
-        width: '100%', 
-        height: '100%', 
-        margin: '2px 0', 
-        borderRadius: '12px', 
-        border: borderStyle, 
-        backgroundColor: bgColor, 
-        display: 'flex', 
-        flexDirection: 'column', // 👈 [완치 완결]: 폰트와 점을 세로 정렬 구조로 격리하여 물리 겹침을 원천 차단
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        position: 'relative', 
-        overflow: 'visible', 
-        cursor: 'pointer', 
-        padding: '2px 0', // 수직 완충 마진 주입
-        boxSizing: 'border-box',
-        ...GLOBAL_NO_SELECT_STYLE 
+        width: '100%', height: '100%', margin: '2px 0', borderRadius: '12px', border: borderStyle, backgroundColor: bgColor, 
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', position: 'relative', overflow: 'visible', cursor: 'pointer', padding: '2px 0', boxSizing: 'border-box', ...GLOBAL_NO_SELECT_STYLE 
       }} 
-      onMouseDown={() => onStart(noteName)} 
-      onMouseUp={onStop} 
-      onMouseLeave={onStop} 
-      onTouchStart={() => onStart(noteName)} 
-      onTouchEnd={onStop}
+      onMouseDown={() => onStart(rawNoteWithOctave)} onMouseUp={onStop} onMouseLeave={onStop} onTouchStart={() => onStart(rawNoteWithOctave)} onTouchEnd={onStop}
     >
       {renderOctaveDots()} 
       
       {isTremoloMode ? (
         <svg viewBox="-50 0 200 42" preserveAspectRatio="xMidYMid meet" style={{ width: '160%', height: '80%', overflow: 'visible', pointerEvents: 'none', ...GLOBAL_NO_SELECT_STYLE, marginTop: dotsInfo.position === 'top' ? '4px' : '0px', marginBottom: dotsInfo.position === 'bottom' ? '4px' : '0px' }}>
           <text 
-          x="50"
-          y="24"
-          textAnchor="middle"
-          dominantBaseline="middle"
-          style={{
-            fontWeight: '650',
-            fill: textColor,
-            zIndex: 10,
-            fontFamily: 'system-ui, -apple-system, sans-serif',
-            textShadow: '0 2px 4px rgba(0,0,0,0.95)',
-            fontSize: isSliderZone 
-            ? (displayLabel.length >= 2 ? '50px' : '52px')  // 트레몰로 1번줄 폰트 크기
-            : (displayLabel.length >= 2 ? '52px' : '54px'), // 트레몰로 2번줄 폰트 크기
-            ...GLOBAL_NO_SELECT_STYLE }}>{displayLabel}</text>
+            x="50" y="24" textAnchor="middle" dominantBaseline="middle" 
+            style={{ 
+              fontWeight: '700', 
+              fill: textColor, 
+              zIndex: 10, 
+              fontFamily: 'system-ui, -apple-system, sans-serif', 
+              textShadow: 'none', 
+              fontSize: displayLabel.length >= 2 ? '54px' : '56px', 
+              ...GLOBAL_NO_SELECT_STYLE
+              }}
+          >
+            {displayLabel}
+          </text> 
         </svg>
       ) : (
-        <span style={{ fontWeight: '600', fontSize: '24px', color: textColor, zIndex: 10, pointerEvents: 'none', whiteSpace: 'nowrap', textShadow: '0 1px 3px rgba(0,0,0,0.8)', ...GLOBAL_NO_SELECT_STYLE }}>{displayLabel}</span>
+        <span style={{ 
+          fontWeight: '600', 
+          fontSize: '24px', 
+          color: textColor, 
+          zIndex: 10, 
+          pointerEvents: 'none', 
+          whiteSpace: 'nowrap', 
+          textShadow: 'none', 
+          ...GLOBAL_NO_SELECT_STYLE,
+         transform: 'translateY(2px)' // 💡 양수(+)면 글자가 아래로 내려가고, 음수(-)면 위로 올라갑니다. 
+         }}>
+          {displayLabel}
+          </span>
       )}
       {isActive && <div style={{ position: 'absolute', left: `${indicatorLeft}%`, width: '4px', height: '100%', backgroundColor: 'rgba(255,255,255,0.9)', zIndex: 5 }} />}
     </div>
   );
-}
-
+} // 👈 💡 [NoteBox 함수 완전 마감 결합 완료]
 
 const MODAL_STYLE = {
   modalOverlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 2000 },
@@ -508,6 +636,11 @@ const MODAL_STYLE = {
 // =========================================================================
 function App({ activeMode, onGoHome }) {
   const [tDisplayLabelType, setTDisplayLabelType] = useState('ENG'); 
+// -----------------------------------------------------------------------
+// 🎯 트레몰로 하모니카 4행 레이어 표기 옵션 상태 필드 (기본값: 방향 표시 'ARROW')
+// -----------------------------------------------------------------------
+const [tFooterDisplayMode, setTFooterDisplayMode] = useState('ARROW'); // 'ARROW' | 'NUMBER' | 'HIDDEN'
+
   // =========================================================================
   // 🎯 [완치 완결] 한글/도수 모드 1행 계명 실종 박멸 및 온전한 샵(#) 표출 엔진
   // =========================================================================
@@ -550,7 +683,7 @@ function App({ activeMode, onGoHome }) {
   };
 
   // -----------------------------------------------------------------------
-  // 🅰️ 다이아토닉 전용 독립 상태 필드 (순정 피치 442Hz 보존)
+  // 🅰️ 다이아토닉 전용 독립 상태 필드 (표기 기본값: 영문 음이름 'ENG')
   // -----------------------------------------------------------------------
   const [dCurrentKey, setDCurrentKey] = useState('C');
   const [dIsLowKey, setDIsLowKey] = useState(false);
@@ -559,9 +692,10 @@ function App({ activeMode, onGoHome }) {
   const [dSelectedScale, setDSelectedScale] = useState('Major / Ionian');
   const [dBaseFreq, setDBaseFreq] = useState(442);
   const [dTolerance, setDTolerance] = useState(10);
+  const [dDisplayLabelType, setDDisplayLabelType] = useState('ENG'); // 💡 [신규 탑재]
 
   // -----------------------------------------------------------------------
-  // 🅱️ 크로마틱 전용 독립 상태 필드 (순정 피치 440Hz 보존)
+  // 🅱️ 크로마틱 전용 독립 상태 필드 (표기 기본값: 영문 음이름 'ENG')
   // -----------------------------------------------------------------------
   const [cCurrentKey, setCCurrentKey] = useState('C');
   const [cIsLowKey, setCIsLowKey] = useState(false); 
@@ -570,18 +704,23 @@ function App({ activeMode, onGoHome }) {
   const [cSelectedScale, setCSelectedScale] = useState('Major / Ionian');
   const [cBaseFreq, setCBaseFreq] = useState(440);
   const [cTolerance, setCTolerance] = useState(10);
+  const [cDisplayLabelType, setCDisplayLabelType] = useState('ENG'); // 💡 [신규 탑재]
 
   // -----------------------------------------------------------------------
   // 🎯 🆃 트레몰로 하모니카 전용 완전히 분리된 독립 상태 필드
   // -----------------------------------------------------------------------
   const [tCurrentKey, setTCurrentKey] = useState('C');
   const [tIsLowKey, setTIsLowKey] = useState(false);
-  const [tSelectedTuning, setTSelectedTuning] = useState('Standard');
+  
+  // 💡 [교정 완결]: 앱 초기 구동 시 '메이저#/마이너 하모니카 숨기기'가 적용된 상태에서 2행만 먼저 보이도록 기틀을 잡습니다.
+  const [tSelectedTuning, setTSelectedTuning] = useState('HideAll'); 
+  
   const [tScaleRootKey, setTScaleRootKey] = useState('C');
   const [tSelectedScale, setTSelectedScale] = useState('Major / Ionian');
-  const [tBaseFreq, setTBaseFreq] = useState(440);
+  const [tBaseFreq, setTBaseFreq] = useState(442);
   const [tTolerance, setTTolerance] = useState(10);
-  const [showCMinusSharp, setShowCMinusSharp] = useState(true);
+
+
   // -----------------------------------------------------------------------
   // 🔄 활성화된 모드(Diatonic / Chromatic / Tremolo)에 따른 런타임 변수 마스터 바인딩
   // -----------------------------------------------------------------------
@@ -595,6 +734,40 @@ function App({ activeMode, onGoHome }) {
   const selectedScale = isTremolo ? tSelectedScale : (isChrom ? cSelectedScale : dSelectedScale);
   const baseFreq = isTremolo ? tBaseFreq : (isChrom ? cBaseFreq : dBaseFreq);
   const tolerance = isTremolo ? tTolerance : (isChrom ? cTolerance : dTolerance);
+  // 💡 [신규 탑재]: 현재 활성화된 모드(다이아토닉/크로마틱/트레몰로)에 따라 표기 방식 상태를 마스터 바인딩합니다.
+  const displayLabelType = isTremolo ? tDisplayLabelType : (isChrom ? cDisplayLabelType : dDisplayLabelType);
+  // eslint-disable-next-line
+  const setDisplayLabelType = isTremolo ? setTDisplayLabelType : (isChrom ? setCDisplayLabelType : setDDisplayLabelType);
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 🎯 [교정 완결]: 다이아토닉 및 크로마틱 모드까지 커버하는 전 기종 통합 도수 선법 변환 엔진
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // eslint-disable-next-line
+  const getCommonDisplayLabel = (noteName) => {
+    if (!noteName) return "";
+    
+    let pureLabel = noteName.replace(/\d+/g, '')
+      .replace(/[\u0300-\u036f\u0307\u0308\u0323\u0324]/g, '')
+      .normalize('NFC')
+      .trim();
+
+    if (pureLabel === "C#") pureLabel = "Db";
+    if (pureLabel === "D#") pureLabel = "Eb";
+    if (pureLabel === "F#") pureLabel = "Gb";
+    if (pureLabel === "G#") pureLabel = "Ab";
+    if (pureLabel === "A#") pureLabel = "Bb";
+    if (displayLabelType === 'DEG') {
+      const names = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+      const matchedIndex = names.indexOf(pureLabel);
+      if (matchedIndex !== -1) {
+        // 연주자님 지침 수렴: C키 오프셋 기준 12반음 절대 도수 맵 테이블 반환
+        const degreeMap = ["1", "2b", "2", "3b", "3", "4", "5b", "5", "6b", "6", "7b", "7"];
+        return degreeMap[matchedIndex];
+      }
+    }
+    return pureLabel;
+  };
+
 
   // 상태 변경용 통합 매핑 핸들러 라우팅
   const setCurrentKey = isTremolo ? setTCurrentKey : (isChrom ? setCCurrentKey : setDCurrentKey);
@@ -631,6 +804,7 @@ function App({ activeMode, onGoHome }) {
   const [micVolume, setMicVolume] = useState(0.8);
   const [synthVolume, setSynthVolume] = useState(0.5);
   const [useReverb, setUseReverb] = useState(true);
+  // eslint-disable-next-line
   const [reverbMode, setReverbMode] = useState('standard');
   const [reverbWet, setReverbWet] = useState(0.2);
 
@@ -777,39 +951,53 @@ function App({ activeMode, onGoHome }) {
   const scaleNotesResult = calculateScaleNotes();
 
    // =========================================================================
-  // 🔄 [트레몰로 가변 전조 반영] 절대 계명 계산 및 주파수 변환 마스터 함수 개편
+  // 🔄 [교정 완결] 크로마틱/트레몰로 하프키 전조 시스템 완벽 통합 계명 변환 엔진
   // =========================================================================
   const getNoteName = (semi) => {
     if (semi === null) return null;
     const names = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+    let resultNote = "";
     
-    // 트레몰로 모드일 때는 신설된 TREMOLO_KEYS 오프셋을 기반으로 동적 피치 연산 수행
     if (isTremolo) {
+      // 🆃 트레몰로 전용 독립 하프키 오프셋 연산 기동
       const keyOffset = TREMOLO_KEYS[tCurrentKey] || 0;
-      const absoluteSemi = semi + keyOffset + (4 * 12); // C4 기본 기준점 안착
-      return names[((absoluteSemi % 12) + 12) % 12] + Math.floor(absoluteSemi / 12);
-    }
-    
-    // 크로마틱 및 다이아토닉 모드는 기존 순정 로직 유지 가드
-    const keyData = isChrom 
-      ? (standardKeys[cCurrentKey] || { semi: 0, oct: 4 }) 
-      : (isLowKey ? (lowKeys[currentKey] || { semi: 0, oct: 3 }) : (standardKeys[currentKey] || { semi: 0, oct: 4 }));
+      const absoluteSemi = semi + keyOffset + (4 * 12);
+      resultNote = names[((absoluteSemi % 12) + 12) % 12] + Math.floor(absoluteSemi / 12);
+    } 
+    else if (isChrom) {
+      // 🎯 [크로마틱 먹통 결함 완치 패치 구역]: 
+      // 크로마틱 모드에서도 사용자가 세팅창에서 선택한 하프키 변수(cCurrentKey)를 정밀 파싱하여
+      // 반음 주파수 거리를 실시간으로 동적 변조 전조 계산하도록 링크 파이프라인을 정상 연결했습니다!
+      const chromaticKeyOffsetMap = {
+        'C': 0, 'C#': 1, 'D': 2, 'D#': 3, 'E': 4, 'F': 5, 'F#': 6, 'G': 7, 'G#': 8, 'A': 9, 'A#': 10, 'B': 11
+      };
       
-    const absoluteSemi = semi + keyData.semi + (keyData.oct * 12);
-    return names[((absoluteSemi % 12) + 12) % 12] + Math.floor(absoluteSemi / 12);
+      // 세팅창의 크로마틱 베이스 키 데이터를 안정적으로 추출 (기본점 4옥타브 매립)
+      const chromOffset = chromaticKeyOffsetMap[cCurrentKey] || 0;
+      const absoluteSemi = semi + chromOffset + (4 * 12); // 스탠다드 4옥타브 베이스 축선 수립
+      resultNote = names[((absoluteSemi % 12) + 12) % 12] + Math.floor(absoluteSemi / 12);
+    } 
+    else {
+      // 🅰️ 다이아토닉 전용 로직 완벽 보존 가드 (손상 전면 차단)
+      const keyData = isLowKey 
+        ? (lowKeys[currentKey] || { semi: 0, oct: 3 }) 
+        : (standardKeys[currentKey] || { semi: 0, oct: 4 });
+      const absoluteSemi = semi + keyData.semi + (keyData.oct * 12);
+      resultNote = names[((absoluteSemi % 12) + 12) % 12] + Math.floor(absoluteSemi / 12);
+    }
+
+    // 글로벌 합성 노이즈 특수 기호 문자열 강제 세척 가드 유지
+    return resultNote
+      .replace(/[\u0300-\u036f\u0307\u0308\u0323\u0324]/g, '')
+      .normalize('NFC')
+      .replace(/[Åå]/g, 'A').replace(/[Ėė]/g, 'E').replace(/[Ċċ]/g, 'C')
+      .replace(/[Ġġ]/g, 'G').replace(/[Ḃḃ]/g, 'B').replace(/[Ḋḋ]/g, 'D');
   };
+
 
   // =========================================================================
   // 🎯 [트레몰로 상단 2중열 부하 하프 연산] 메이저: 반음 위(+1) / 마이너: 단3도 아래(-3)
   // =========================================================================
-  const getTremoloTopRowSemi = (baseSemi) => {
-    // 설정창에서 선택한 하프 튜닝 옵션(tSelectedTuning)에 따라 분기
-    if (tSelectedTuning === 'Minor') {
-      return baseSemi - 3; // 단3도 낮은 음정 계산 적용
-    }
-    return baseSemi + 1; // 기본값 또는 Major 선택 시 반음 위 키 음정 계산 적용
-  };
-
 
   const handleNoteStart = async (note) => {
     if (!note) return;
@@ -1043,29 +1231,40 @@ function App({ activeMode, onGoHome }) {
               Harp Key
             </span>
             
+                        {/* 🎯 [완치 완결 핵심 패치]: 크로마틱 잠금 해제 및 다이아토닉/트레몰로 삼원 통합 셀렉터 엔진 */}
             <select 
-              style={{ ...BOX_STYLE.selectBox, height: '45px', padding: '0 12px', display: 'flex', alignItems: 'center', flexShrink: 0 }} 
-              value={currentKey} 
+              style={{ ...BOX_STYLE.selectBox, height: '45px', padding: '0 12px', display: 'flex', alignItems: 'center', flexShrink: 0, pointerEvents: 'auto', cursor: 'pointer' }} 
+              // 💡 기종에 맞는 실시간 상태 변수를 영리하게 자동 역추적 바인딩
+              value={isTremolo ? tCurrentKey : (isChrom ? cCurrentKey : currentKey)} 
               onChange={(e) => {
+                const val = e.target.value;
                 if (isTremolo) {
-                  setTCurrentKey(e.target.value);
-                  setTScaleRootKey(e.target.value);
-                } else if (!isChrom) {
-                  handleHarpKeyChange(e.target.value);
+                  setTCurrentKey(val);
+                  setTScaleRootKey(val);
+                } else if (isChrom) {
+                  // 🎯 크로마틱 하프키 선택 시 cCurrentKey를 실시간으로 동적 변조 처리 가동!
+                  setCCurrentKey(val);
+                } else {
+                  handleHarpKeyChange(val);
                 }
               }}
-              disabled={isChrom}
+              // 💡 크로마틱 모드일 때 마우스 클릭을 가로막던 disabled={isChrom} 잠금장치를 원천 소각해 해제했습니다!
+              disabled={false} 
             >
               {isTremolo ? (
                 ["E", "F", "F#", "G", "G#", "A", "A#", "B", "C", "C#", "D", "D#"].map(k => (
                   <option key={k} value={k}>{k}</option>
                 ))
               ) : isChrom ? (
-                <option value="C">C</option>
+                // 🎯 크로마틱 모드일 때 C 하나로 잠겨있던 리스트를 12개 반음 조표 전체로 완전 개방 복원!
+                ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"].map(k => (
+                  <option key={k} value={k}>{k}</option>
+                ))
               ) : (
                 !isLowKey ? Object.keys(standardKeys).map(k => <option key={k} value={k}>{k}</option>) : Object.keys(lowKeys).map(k => <option key={k} value={k}>{k}</option>)
               )}
             </select>
+
             
             <button 
               onClick={navigateToCircle} 
@@ -1122,20 +1321,12 @@ function App({ activeMode, onGoHome }) {
         </div> {/* 👈 Part 3가 정확하게 마감되는 도킹선 완료 */}
 
     
-        {/* ----------------------------------------------------------------------- */}
-        {/* 🅰️ 다이아토닉 모드 전용 10홀 그리드 렌더링 엔진 분기 */}
+                {/* ----------------------------------------------------------------------- */}
+        {/* 🅰️ [파트 1/2 완치본] 다이아토닉 모드 전용 10홀 그리드 렌더링 엔진 분기 */}
         {/* ----------------------------------------------------------------------- */}
         {!isChrom && !isTremolo && (
           <div style={{ 
-            display: 'flex', 
-            gap: '8px',                     // 👈 홀과 홀 사이의 간격 마진을 사진 속 정갈한 상태로 고수
-            padding: '4px 0', 
-            width: '100%', 
-            maxWidth: '1000px',             // 🎯 상단 메뉴바의 최대 폭과 칼같이 일치시켜 정렬선 합치기
-            margin: '0 auto 2.5vh auto',    // 👈 화면 정중앙 도킹 정렬 및 하단 믹서 대시보드와의 상하 여백 밸런스 최적화
-            justifyContent: 'space-between', 
-            boxSizing: 'border-box',
-            position: 'relative'
+            display: 'flex', gap: '8px', padding: '4px 0', width: '100%', maxWidth: '1000px', margin: '0 auto 2.5vh auto', justifyContent: 'space-between', boxSizing: 'border-box', position: 'relative'
           }}>       
             {HARP_LAYOUT.holes.map((h, i) => {
               return (
@@ -1145,14 +1336,15 @@ function App({ activeMode, onGoHome }) {
                   <div style={{ display: 'flex', flexDirection: 'column-reverse', gap: '8px', height: 'calc(29.6vw + 24px)', maxHeight: '344px', width: '100%', justifyContent: 'start', alignItems: 'center', boxSizing: 'border-box', marginBottom: '10px' }}>
                     {ACTIVE_LAYOUT.topSpecials[i]?.map((semiVal, tIdx) => (
                       <div key={tIdx} style={{ width: '100%', height: '7.4vw', maxHeight: '80px', visibility: semiVal === null ? 'hidden' : 'visible', flexShrink: 0 }}>
-                        <NoteBox semi={semiVal} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} isBlowZone={true} holeNum={h} showOverbanding={showOverbanding} selectedTuning={selectedTuning} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight}/>
+                        {/* 💡 [완치 완결]: displayLabelType을 완벽하게 주입하여 도수 온오프 신호를 격자에 직결 전달합니다. */}
+                        <NoteBox semi={semiVal} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} isBlowZone={true} holeNum={h} showOverbanding={showOverbanding} selectedTuning={selectedTuning} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} displayLabelType={displayLabelType}/>
                       </div>
                     ))}
                   </div>
 
                   {/* 2. 표준 블로우 행 */}
                   <div style={{ width: '100%', height: '7.4vw', maxHeight: '80px', flexShrink: 0, marginBottom: '12px' }}>
-                    <NoteBox semi={ACTIVE_LAYOUT.blow[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} />
+                    <NoteBox semi={ACTIVE_LAYOUT.blow[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} displayLabelType={displayLabelType} />
                   </div>
                   
                   {/* 3. 중앙 가이드 홀 번호 행 및 스케일 칩 레이어 */}
@@ -1160,27 +1352,7 @@ function App({ activeMode, onGoHome }) {
                     {h}
                     {i === 0 && (
                       <div style={{ 
-                        width: '650px', 
-                        display: 'flex', 
-                        flexDirection: 'row', 
-                        flexWrap: 'nowrap', 
-                        alignItems: 'center', 
-                        justifyContent: 'flex-start', 
-                        gap: '14px', 
-                        position: 'absolute', 
-                        // 🎯 [완치 완결 코어 패치]: 화면이 아무리 커지더라도 절대 도화지 바깥으로 탈출하지 못하도록 상하 폭 최대 고정 마진 분기 수식을 정비했습니다.
-                        // 소형 화면에서는 calc(-29.6vw - 50px)로 부드럽게 연동하고, 대형 모니터에서는 상한선인 -255px 자리에 자석처럼 찰칵 고정되어 증발 현상을 영구 차단합니다!
-                        top: 'max(-255px, calc(-29.6vw - 42px))', 
-                        left: '0px', 
-                        zIndex: 300, 
-                        backgroundColor: 'transparent', 
-                        backdropFilter: 'none', 
-                        border: 'none', 
-                        padding: 0, 
-                        boxSizing: 'border-box', 
-                        pointerEvents: 'none', 
-                        boxShadow: 'none', 
-                        overflow: 'hidden' 
+                        width: '650px', display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'flex-start', gap: '14px', position: 'absolute', top: 'max(-255px, calc(-29.6vw - 42px))', left: '0px', zIndex: 300, backgroundColor: 'transparent', backdropFilter: 'none', border: 'none', padding: 0, boxSizing: 'border-box', pointerEvents: 'none', boxShadow: 'none', overflow: 'hidden' 
                       }}>
                         <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
                           <span style={{ fontSize: '18px', fontWeight: '600', color: '#60a5fa', letterSpacing: '-0.3px', whiteSpace: 'nowrap', textShadow: '0 2px 4px rgba(0,0,0,0.9)', fontFamily: 'inherit' }}>
@@ -1200,36 +1372,25 @@ function App({ activeMode, onGoHome }) {
                       </div>
                     )}
                   </div>
-                
+
                   {/* 4. 표준 드로우 행 */}
                   <div style={{ width: '100%', height: '7.4vw', maxHeight: '80px', flexShrink: 0, marginBottom: '10px' }}>
-                    <NoteBox semi={ACTIVE_LAYOUT.draw[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} />
+                    <NoteBox semi={ACTIVE_LAYOUT.draw[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} displayLabelType={displayLabelType} />
                   </div>
 
                   {/* 5. 하단 벤딩 존 스택 구역 */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', height: 'calc(22.2vw + 16px)', maxHeight: '256px', width: '100%', justifyContent: 'start', alignItems: 'center' }}>
                     {ACTIVE_LAYOUT.bottomSpecials[i]?.map((semiVal, sIdx) => (
                       <div key={sIdx} style={{ width: '100%', height: '7.4vw', maxHeight: '80px', visibility: semiVal === null ? 'hidden' : 'visible', flexShrink: 0 }}>
-                        <NoteBox semi={semiVal} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} isDrawZone={true} holeNum={h} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} />
+                        <NoteBox semi={semiVal} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} isDrawZone={true} holeNum={h} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} displayLabelType={displayLabelType} />
                       </div>
                     ))}
                   </div>
 
-{/* 🎯 [다이아토닉 전용] 5번홀~10번홀 하단부 빈 공간 맞춤 도킹 레이어 매립 */}
+                  {/* 다이아토닉 푸터 저작권 바인딩 */}
                   {h === 10 && (
                     <div style={{ 
-                      position: 'absolute', 
-                      bottom: 'calc(-10px - 1vh)', // 👈 하단 대시보드 바로 윗선 빈 공간에 칼같이 정렬
-                      right: '0px', 
-                      width: 'calc(6 * 8.5vw + 50px)', // 👈 5번 홀부터 10번 홀까지의 총 너비를 자동 연산
-                      maxWidth: '650px', 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      alignItems: 'flex-end', // 👈 정갈한 왼쪽 텍스트 라인 정렬
-                      pointerEvents: 'none', 
-                      zIndex: 10, 
-                      fontFamily: 'inherit', 
-                      lineHeight: '1.35' 
+                      position: 'absolute', bottom: 'calc(-10px - 1vh)', right: '0px', width: 'calc(6 * 8.5vw + 50px)', maxWidth: '650px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', pointerEvents: 'none', zIndex: 10, fontFamily: 'inherit', lineHeight: '1.35' 
                     }}>
                       <div style={{ fontSize: 'calc(12px + 0.4vw)', minFontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '2px' }}>
                         [ {selectedTuning.toUpperCase()} TUNING | SCALE : {selectedScale.toUpperCase()} ]
@@ -1248,25 +1409,26 @@ function App({ activeMode, onGoHome }) {
             })}
           </div>
         )}
+
         {/* ----------------------------------------------------------------------- */}
-        {/* 🅱️ 크로마틱 모드 전용 12홀 5행 그리드 렌더링 엔진 분기 (순수 텍스트 정합) */}
+        {/* 🅱️ [파트 2/2 완치본] 크로마틱 모드 전용 12홀 5행 그리드 렌더링 엔진 분기 */}
         {/* ----------------------------------------------------------------------- */}
         {isChrom && (
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '2vh', boxSizing: 'border-box' }}>
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '2vh', boxSizing: 'border-box', ...GLOBAL_NO_SELECT_STYLE }}>
             
-            {/* [투명 텍스트 가이드 행] 박스 없이 순수하게 표출되는 [전조 키 + 스케일 종류] 및 구성음 */}
-            <div style={{ width: '100%', display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'flex-start', gap: '10px', padding: '8px 0', backgroundColor: 'transparent', border: 'none', boxSizing: 'border-box', marginBottom: '1vh', overflow: 'hidden', pointerEvents: 'none' }}>
-              <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                <span style={{ fontSize: '20px', fontWeight: '600', color: '#60a5fa', letterSpacing: '-0.3px', whiteSpace: 'nowrap', textShadow: '0 2px 5px rgba(0,0,0,1)', fontFamily: 'inherit' }}>
-                  {scaleRootKey} {selectedScale}
+            {/* [투명 텍스트 가이드 행] */}
+            <div style={{ width: '100%', display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'flex-start', gap: '10px', padding: '8px 0', backgroundColor: 'transparent', border: 'none', boxSizing: 'border-box', marginBottom: '1vh', overflow: 'hidden', pointerEvents: 'none', ...GLOBAL_NO_SELECT_STYLE }}>
+              <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '8px', flexShrink: 0, ...GLOBAL_NO_SELECT_STYLE }}>
+                <span style={{ fontSize: '20px', fontWeight: '600', color: '#60a5fa', letterSpacing: '-0.3px', whiteSpace: 'nowrap', textShadow: '0 2px 5px rgba(0,0,0,1)', fontFamily: 'inherit', ...GLOBAL_NO_SELECT_STYLE }}>
+                  {cCurrentKey} {selectedScale}
                 </span>
-                <span style={{ fontSize: '18px', color: '#475569', fontWeight: '600', letterSpacing: '0.5px', whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
+                <span style={{ fontSize: '18px', color: '#475569', fontWeight: '600', letterSpacing: '0.5px', whiteSpace: 'nowrap', fontFamily: 'inherit', ...GLOBAL_NO_SELECT_STYLE }}>
                   SCALE NOTES
                 </span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '18px', flex: 1, overflowX: 'hidden' }}>
+              <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '18px', flex: 1, overflowX: 'hidden', ...GLOBAL_NO_SELECT_STYLE }}>
                 {scaleNotesResult.map((note, idx) => (
-                  <span key={idx} style={{ fontSize: '24px', fontWeight: '600', color: idx === 0 || idx === scaleNotesResult.length - 1 ? '#60a5fa' : '#cbd5e1', textShadow: '0 2px 5px rgba(0,0,0,1)', userSelect: 'none', whiteSpace: 'nowrap', letterSpacing: '-0.5px', flexShrink: 0, fontFamily: 'inherit' }}>
+                  <span key={idx} style={{ fontSize: '24px', fontWeight: '600', color: idx === 0 || idx === scaleNotesResult.length - 1 ? '#60a5fa' : '#cbd5e1', textShadow: '0 2px 5px rgba(0,0,0,1)', userSelect: 'none', whiteSpace: 'nowrap', letterSpacing: '-0.5px', flexShrink: 0, fontFamily: 'inherit', ...GLOBAL_NO_SELECT_STYLE }}>
                     {note}
                   </span>
                 ))}
@@ -1274,7 +1436,7 @@ function App({ activeMode, onGoHome }) {
             </div>
 
             {/* 크로마틱 물리 자판 격자 패널 구역 */}
-            <div style={{ ...BOX_STYLE.gridContainer, marginTop: '0px' }}>
+            <div style={{ ...BOX_STYLE.gridContainer, marginTop: '0px', ...GLOBAL_NO_SELECT_STYLE }}>
               {Array.from({ length: 12 }).map((_, i) => {
                 const h = i + 1;
                 const targetLayout = CHROMATIC_TUNINGS[selectedTuning] || CHROMATIC_LAYOUT;
@@ -1285,31 +1447,32 @@ function App({ activeMode, onGoHome }) {
                 const sliderDrawOffsets = targetLayout.sliderDraw;
 
                 return (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', width: '6.2vw', maxWidth: '80px' }}>
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', width: '6.2vw', maxWidth: '80px', ...GLOBAL_NO_SELECT_STYLE }}>
                     
                     {/* 행 1: [Slider In Blow Zone] */}
-                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '12px' }}>
-                      <NoteBox semi={sliderBlowOffsets[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} isSliderZone={true}/>
+                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '12px', ...GLOBAL_NO_SELECT_STYLE }}>
+                      {/* 💡 [완치 완결]: 크로마틱 각 상자에도 displayLabelType을 연동 주입하여 도수 통신망을 복원합니다. */}
+                      <NoteBox semi={sliderBlowOffsets[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} isSliderZone={true} displayLabelType={displayLabelType}/>
                     </div>
 
                     {/* 행 2: [Standard Blow Zone] */}
-                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '16px' }}>
-                      <NoteBox semi={standardBlowOffsets[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight}/>
+                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '16px', ...GLOBAL_NO_SELECT_STYLE }}>
+                      <NoteBox semi={standardBlowOffsets[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} displayLabelType={displayLabelType}/>
                     </div>
                     
                     {/* 행 3: [중앙 가이드 홀 번호 행] */}
-                    <div style={{ ...BOX_STYLE.holeNumber, width: '100%', height: '48px', margin: '0 0 8px 0', fontSize: '20px', color: '#94a3b8' }}>
+                    <div style={{ ...BOX_STYLE.holeNumber, width: '100%', height: '48px', margin: '0 0 8px 0', fontSize: '20px', color: '#94a3b8', ...GLOBAL_NO_SELECT_STYLE }}>
                       {h}
                     </div>
-                  
+
                     {/* 행 4: [Standard Draw Zone] */}
-                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '12px' }}>
-                      <NoteBox semi={standardDrawOffsets[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight}/>
+                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '12px', ...GLOBAL_NO_SELECT_STYLE }}>
+                      <NoteBox semi={standardDrawOffsets[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} displayLabelType={displayLabelType}/>
                     </div>
 
                     {/* 행 5: [Slider In Draw Zone] */}
-                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '10px' }}>
-                      <NoteBox semi={sliderDrawOffsets[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} isSliderZone={true}/>
+                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '10px', ...GLOBAL_NO_SELECT_STYLE }}>
+                      <NoteBox semi={sliderDrawOffsets[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} isSliderZone={true} displayLabelType={displayLabelType}/>
                     </div>
 
                   </div>
@@ -1319,31 +1482,28 @@ function App({ activeMode, onGoHome }) {
           </div>
         )}
         
-        {/* 🎯 [크로마틱 전용] 기존 오른쪽 하단부 정렬 레이아웃 100% 고수 */}
+        {/* [크로마틱 전용] 푸터 저작권 마감 */}
         {isChrom && (
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', pointerEvents: 'none', zIndex: 10, fontFamily: 'inherit', lineHeight: '1.3', marginTop: '1vh' }}>
-            <div style={{ fontSize: 'calc(11px + 0.4vw)', minFontSize: '13px', fontWeight: '600', color: '#64748b', marginBottom: '2px' }}>
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', pointerEvents: 'none', zIndex: 10, fontFamily: 'inherit', lineHeight: '1.3', marginTop: '1vh', ...GLOBAL_NO_SELECT_STYLE }}>
+            <div style={{ fontSize: 'calc(11px + 0.4vw)', minFontSize: '13px', fontWeight: '600', color: '#64748b', marginBottom: '2px', ...GLOBAL_NO_SELECT_STYLE }}>
               [ MODE : {selectedTuning.toUpperCase()} TUNING | SCALE : {selectedScale.toUpperCase()} ]
             </div>
-            <div style={{ fontSize: 'calc(13px + 1.2vw)', minFontSize: '16px', fontWeight: '600', color: '#10b981', marginBottom: '6px', letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>
+            <div style={{ fontSize: 'calc(13px + 1.2vw)', minFontSize: '16px', fontWeight: '600', color: '#10b981', marginBottom: '6px', letterSpacing: '-0.5px', whiteSpace: 'nowrap', ...GLOBAL_NO_SELECT_STYLE }}>
               Chromatic Harmonica Training Center
             </div>
-            <div style={{ color: '#475569', fontSize: 'calc(8px + 0.4vw)', minFontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>
+            <div style={{ color: '#475569', fontSize: 'calc(8px + 0.4vw)', minFontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap', ...GLOBAL_NO_SELECT_STYLE }}>
               Copyright ⓒ 2026 CoffeeBada Lee, ChoongKoo All Rights Reserved.
-            </div>
-            <div style={{ color: '#64748b', fontSize: 'calc(8px + 0.4vw)', minFontSize: '11px', fontWeight: '600', marginTop: '1px', whiteSpace: 'nowrap' }}>
-              Contact : 279.lee@gmail.com
             </div>
           </div>
         )}
         
         {/* ----------------------------------------------------------------------- */}
-        {/* 🆃 [신규] 트레몰로 하모니카 모드 전용 24홀 2중열 그리드 렌더링 엔진 분기 */}
+        {/* 🆃 [4줄 개조 완결] 트레몰로 하모니카 모드 전용 24홀 4줄 격자 레이아웃 엔진 */}
         {/* ----------------------------------------------------------------------- */}
         {isTremolo && (
           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '1vh', boxSizing: 'border-box', ...GLOBAL_NO_SELECT_STYLE }}>
             
-            {/* [투명 텍스트 가이드 행] 실시간 스케일 종류 및 가로 한 줄 온음계 흐름 */}
+            {/* [투명 텍스트 가이드 행] 실시간 스케일 정보 명세 */}
             <div style={{ width: '100%', display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'flex-start', gap: '10px', padding: '4px 0', backgroundColor: 'transparent', border: 'none', boxSizing: 'border-box', marginBottom: '0.5vh', overflow: 'hidden', pointerEvents: 'none', ...GLOBAL_NO_SELECT_STYLE }}>
               <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                 <span style={{ fontSize: '18px', fontWeight: '600', color: '#c084fc', letterSpacing: '-0.3px', whiteSpace: 'nowrap', textShadow: '0 2px 5px rgba(0,0,0,1)', fontFamily: 'inherit', ...GLOBAL_NO_SELECT_STYLE }}>
@@ -1362,44 +1522,63 @@ function App({ activeMode, onGoHome }) {
               </div>
             </div>
 
-            {/* 🎯 [화면 크기 맞춤 자동 축소 가드] 24홀 가변 그리드 기판 */}
+                        {/* 🎯 24홀 가변 4개 행 입체 기판 구축 (2행 항시 상주 모드 정합) */}
             <div style={{ 
-              display: 'flex', 
-              flexDirection: 'row',
-              flexWrap: 'nowrap', 
-              justifyContent: 'space-between', 
-              alignItems: 'center',
-              gap: '4px',   // 트레몰로 음정사각형 좌우 간격
-              width: '100%', 
-              boxSizing: 'border-box',
-              marginTop: '0px',
-              overflow: 'hidden',
-              ...GLOBAL_NO_SELECT_STYLE
+              display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', justifyContent: 'space-between', alignItems: 'center', gap: '4px', width: '100%', boxSizing: 'border-box', marginTop: '0px', overflow: 'hidden', ...GLOBAL_NO_SELECT_STYLE
             }}>
               {Array.from({ length: 24 }).map((_, i) => {
                 const h = i + 1;
-                const baseSemi = TREMOLO_BASE_C_KEY[i];
-                const topRowSemi = getTremoloTopRowSemi(baseSemi);
+                const isOdd = h % 2 !== 0;
+
+                // 2행 축선: 메이저 연산의 순정 베이스 데이터 (C키 선택 연동)
+                const majorBaseSemi = TREMOLO_BASE_MAJOR[i];
+                
+                // 1행 축선: 항상 2행보다 반음 위(+1)
+                const topRowSemi = majorBaseSemi + 1;
+
+                // 3행 축선: 마이너 고유 배열 데이터
+                const minorBaseSemi = TREMOLO_BASE_MINOR[i];
 
                 return (
                   <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', flex: '1 1 0%', minWidth: '0px', boxSizing: 'border-box', ...GLOBAL_NO_SELECT_STYLE }}>
                     
-                    {/* 🎯 행 1: [첫번째줄 부하 하프 상단 레이어] - 내장형 절대 옥타브 도트 가드 자동 제어 */}
-                    <div style={{ width: '100%', height: '3.6vw', minHeight: '30px', maxHeight: '65px', flexShrink: 0, marginBottom: '6px', position: 'relative', display: showCMinusSharp ? 'block' : 'none', ...GLOBAL_NO_SELECT_STYLE }}>
-                      <NoteBox semi={topRowSemi} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} isSliderZone={true} isTremoloMode={true} tremoloLabelFn={(note) => getTremoloDisplayLabel(note, true)}/>
+                    {/* 🎯 1행 : 'Major 메이저' 선택 시에만 독립적으로 잠금 해제되어 표출되는 반음 위 샵(#) 레이어 */}
+                    {tSelectedTuning === 'Standard' && (
+                      <div style={{ width: '100%', height: '3.6vw', minHeight: '30px', maxHeight: '65px', flexShrink: 0, marginBottom: '6px', position: 'relative', ...GLOBAL_NO_SELECT_STYLE }}>
+                        <NoteBox semi={topRowSemi} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} isSliderZone={true} isTremoloMode={true} tremoloLabelFn={(note) => getTremoloDisplayLabel(note, true)}/>
+                      </div>
+                    )}
+
+                    {/* 🎯 2행 : [연주자님 지침 핵심 반영] 어떠한 모드('HideAll', 'Standard', 'Minor')에서도 조건문 없이 무조건 항시 보이는 기준 줄! */}
+                    <div style={{ width: '100%', height: '3.6vw', minHeight: '30px', maxHeight: '65px', flexShrink: 0, marginBottom: '6px', position: 'relative', ...GLOBAL_NO_SELECT_STYLE }}>
+                      <NoteBox semi={majorBaseSemi} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} isTremoloMode={true} tremoloLabelFn={(note) => getTremoloDisplayLabel(note, false)}/>
                     </div>
 
-                    {/* 🎯 행 2: [두번째줄 온음 C키 하단 레이어] - 내장형 절대 옥타브 도트 가드 자동 제어 */}
-                    <div style={{ width: '100%', height: '3.6vw', minHeight: '30px', maxHeight: '65px', flexShrink: 0, marginBottom: '6px', position: 'relative', ...GLOBAL_NO_SELECT_STYLE }}>
-                      <NoteBox semi={baseSemi} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} isTremoloMode={true} tremoloLabelFn={(note) => getTremoloDisplayLabel(note, false)}/>
-                    </div>
+                    {/* 🎯 3행 : 'minor 마이너' 선택 시에만 독립적으로 잠금 해제되어 표출되는 마이너 음정 레이어 */}
+                    {tSelectedTuning === 'Minor' && (
+                      <div style={{ width: '100%', height: '3.6vw', minHeight: '30px', maxHeight: '65px', flexShrink: 0, marginBottom: '6px', position: 'relative', ...GLOBAL_NO_SELECT_STYLE }}>
+                        <NoteBox semi={minorBaseSemi} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} isTremoloMode={true} tremoloLabelFn={(note) => getTremoloDisplayLabel(note, false)}/>
+                      </div>
+                    )}
                     
-                    {/* 🎯 행 3: [중앙 순수 가이드 홀 번호 행] - 홀 번호 자형까지 마우스 드래그지정 원천 불허 */}
-                    <div style={{ width: '95%', height: '32px', border: '1px solid #475569', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1e293b', margin: '0', flexShrink: 0, fontFamily: 'inherit', ...GLOBAL_NO_SELECT_STYLE }}>
-                      <span style={{ fontWeight: '700', fontSize: 'calc(9px + 0.3vw)', minFontSize: '11px', color: '#94a3b8', ...GLOBAL_NO_SELECT_STYLE }}>
-                        {h}
-                      </span>
-                    </div>
+                                        {/* 🎯 4행 : 세팅 옵션 연동형 가이드 표시 줄 (둥근 삼각형/홀번호 도킹) */}
+                    {tFooterDisplayMode !== 'HIDDEN' && (
+                      <div style={{ 
+                        width: '100%', height: '3.6vw', minHeight: '30px', maxHeight: '65px', 
+                        border: '1px solid #475569', borderRadius: '8px', 
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                        backgroundColor: '#1e293b', margin: '0', flexShrink: 0, 
+                        boxSizing: 'border-box', overflow: 'hidden', ...GLOBAL_NO_SELECT_STYLE 
+                      }}>
+                        {tFooterDisplayMode === 'ARROW' ? (
+                          <HarmonicaTriangleArrow isOddHole={isOdd} />
+                        ) : (
+                          <span style={{ fontWeight: '700', fontSize: 'calc(9px + 0.3vw)', minFontSize: '11px', color: '#94a3b8', ...GLOBAL_NO_SELECT_STYLE }}>
+                            {h}
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                   </div>
                 );
@@ -1408,45 +1587,74 @@ function App({ activeMode, onGoHome }) {
           </div>
         )}
 
-        {/* 🎯 [트레몰로 전용] 우측 하단 정렬 레이아웃 싱크 디스플레이 푸터 마감 */}
+        {/* 🎯 [완치 완결]: 자판 박스 및 화살표 가이드라인과의 상하 유기적 대칭 거리를 순정 황금 비율(1.5vh)로 안전 복원합니다! */}
         {isTremolo && (
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', pointerEvents: 'none', zIndex: 10, fontFamily: 'inherit', lineHeight: '1.3', marginTop: '1.5vh', ...GLOBAL_NO_SELECT_STYLE }}>
-            <div style={{ fontSize: 'calc(10px + 0.4vw)', minFontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '2px', ...GLOBAL_NO_SELECT_STYLE }}>
-              [ MODE : TREMOLO STANDARD | TUNING : {selectedTuning === 'Minor' ? 'MINOR' : 'MAJOR'} | LABEL : {tDisplayLabelType} | C-SHARP LAYER : {showCMinusSharp ? 'VISIBLE' : 'HIDDEN'} ]
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', pointerEvents: 'none', zIndex: 10, fontFamily: 'inherit', lineHeight: '1.3', marginTop: '0.5vh', ...GLOBAL_NO_SELECT_STYLE }}>
+            <div style={{ fontSize: 'calc(14px + 0.4vw)', minFontSize: '12px', fontWeight: '600', color: '#64748b', marginBottom: '2px', ...GLOBAL_NO_SELECT_STYLE }}>
+              [ MODE : TREMOLO STANDARD | TUNING : {selectedTuning === 'HideAll' ? 'MAJOR# / MINOR HIDDEN' : (selectedTuning === 'Minor' ? 'MINOR' : 'MAJOR')} ]
             </div>
-            <div style={{ fontSize: 'calc(13px + 1.2vw)', minFontSize: '16px', fontWeight: '600', color: '#10b981', marginBottom: '6px', letterSpacing: '-0.5px', whiteSpace: 'nowrap', ...GLOBAL_NO_SELECT_STYLE }}>
+            <div style={{ fontSize: 'calc(20px + 1.2vw)', minFontSize: '16px', fontWeight: '600', color: '#10b981', marginBottom: '6px', letterSpacing: '-0.5px', whiteSpace: 'nowrap', ...GLOBAL_NO_SELECT_STYLE }}>
               Tremolo Harmonica Training Center
             </div>
-            <div style={{ color: '#475569', fontSize: 'calc(8px + 0.4vw)', minFontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap', ...GLOBAL_NO_SELECT_STYLE }}>
+            <div style={{ color: '#475569', fontSize: 'calc(10px + 0.4vw)', minFontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap', ...GLOBAL_NO_SELECT_STYLE }}>
               Copyright ⓒ 2026 CoffeeBada Lee, ChoongKoo All Rights Reserved.
             </div>
           </div>
         )}
 
-        {/* ----------------------------------------------------------------------- */}
-        {/* 🎛️ 오디오 대시보드 제어 인터페이스 구역 (보내주신 이미지 사양 반영: 다이아토닉 가로폭 동기화) */}
+
+                {/* ----------------------------------------------------------------------- */}
+        {/* 🎛️ [파트 2/3] 오디오 대시보드 제어 인터페이스 구역 (자판과의 공백을 음정박스 높이로 정밀 수축) */}
         {/* ----------------------------------------------------------------------- */}
         <div style={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          width: '100%', 
-          // 🎯 [실물 사진 매칭 완결] 다이아토닉 모드일 때 하단 메뉴 프레임의 폭을 자판 및 상단 메뉴와 일직선으로 연동
+          display: 'flex', flexDirection: 'column', width: '100%', 
           maxWidth: (!isChrom && !isTremolo) ? '1000px' : (isTremolo ? '100%' : '1200px'),
-          margin: '0 auto',                  // 👈 화면 정중앙 도킹 정렬 및 좌우 마진 균형 일치
-          gap: '1vh', 
+          margin: '0 auto', 
+          gap: '12px',            // 🎯 [연주자님 지침 반영]: 내부 요소 간격을 콤팩트하게 압축
           boxSizing: 'border-box', 
-          marginTop: 'auto',                
-          flexShrink: 1,                    
-          paddingBottom: '2vh'
+          marginTop: '2.5vh',     // 🎯 [연주자님 지침 반영]: 자판 격자와의 거리를 자판 1칸 높이 수준으로 완벽 조율
+          flexShrink: 0, 
+          paddingBottom: '50px'
         }}>
           
           {/* 🎼 [1층 축: 배킹트랙 MR 및 속도/피치 통합 3등분 라인] */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', width: '100%', gap: '14px', alignItems: 'center', boxSizing: 'border-box' }}>
-            
-            {/* 1-1. MR 파일 업로드 및 실시간 플레이어 메인 제어 통로 */}
+                        {/* 1-1. MR 파일 업로드 및 실시간 플레이어 메인 제어 통로 (원하는 글자로 완벽 개조) */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: '#111827', padding: '8px 14px', borderRadius: '12px', border: '1px solid #1e293b', height: '48px', boxSizing: 'border-box' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flexShrink: 0 }}>
-                <BackingTrackPlayer onFileLoaded={handleBackingTrackLoaded} />
+                
+                {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+                {/* 🎯 [완치 완결 패치]: 투박한 "파일 선택"을 숨기고 원하는 텍스트 디자인 버튼으로 빌드 */}
+                {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+                <label style={{ 
+                  backgroundColor: '#1f2937', 
+                  color: '#60a5fa', 
+                  fontSize: '14px', 
+                  fontWeight: '700',
+                  padding: '6px 12px', 
+                  borderRadius: '8px', 
+                  border: '1px solid #374151', 
+                  cursor: 'pointer', 
+                  display: 'inline-block', 
+                  userSelect: 'none',
+                  fontFamily: 'inherit',
+                  transition: 'all 0.15s'
+                }}>
+                  {/* 💡 [팁]: 여기 적힌 "MR 등록" 글자를 연주자님이 원하시는 한글 명칭으로 마음대로 바꾸시면 됩니다! */}
+                  File Select
+                  
+                  <input 
+                    type="file" 
+                    accept="audio/*" 
+                    onChange={(e) => {
+                      const file = e.target.files;
+                      if (file && file[0]) { handleBackingTrackLoaded(URL.createObjectURL(file[0]), file[0].name); }
+                    }} 
+                    style={{ display: 'none' }} // 👈 시스템이 강제로 띄우던 "파일 선택" 글자를 원천 숨김 처리합니다.
+                  />
+                </label>
+                {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+                
               </div>
               <button onClick={toggleTrack} style={{ ...DASHBOARD_STYLE.playBtn, height: '32px', width: '32px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, backgroundColor: isPlaying ? '#ef4444' : '#10b981' }}>
                 {isPlaying ? <Pause size={14} /> : <Play size={14} />}
@@ -1457,259 +1665,205 @@ function App({ activeMode, onGoHome }) {
               </div>
             </div>
 
-            {/* 1-2. SPEED 배킹 트랙 속도 증감 버튼 정밀 컨트롤러 */}
+
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#111827', padding: '6px 14px', borderRadius: '12px', border: '1px solid #1e293b', height: '48px', boxSizing: 'border-box' }}>
-              <span style={{ fontSize: '13px', fontWeight: '700', color: '#94a3b8', whiteSpace: 'nowrap' }}>SPEED</span>
+              <span style={{ fontSize: '14px', fontWeight: '700', color: '#94a3b8', whiteSpace: 'nowrap' }}>SPEED</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <button onClick={() => setPlaybackRate(prev => Math.max(0.4, parseFloat((prev - 0.05).toFixed(2))))} style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#374151', color: '#ffffff', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: '700', cursor: 'pointer', userSelect: 'none' }}>-</button>
+                <button onClick={() => setPlaybackRate(prev => Math.max(0.4, parseFloat((prev - 0.05).toFixed(2))))} style={{ width: '30px', height: '30px', backgroundColor: '#374151', color: '#ffffff', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: '700', cursor: 'pointer' }}>-</button>
                 <span style={{ fontSize: '14px', fontWeight: '700', color: '#60a5fa', minWidth: '48px', textAlign: 'center' }}>{playbackRate.toFixed(2)}x</span>
-                <button onClick={() => setPlaybackRate(prev => Math.min(1.0, parseFloat((prev + 0.05).toFixed(2))))} style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#374151', color: '#ffffff', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: '700', cursor: 'pointer', userSelect: 'none' }}>+</button>
+                <button onClick={() => setPlaybackRate(prev => Math.min(1.0, parseFloat((prev + 0.05).toFixed(2))))} style={{ width: '30px', height: '30px', backgroundColor: '#374151', color: '#ffffff', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: '700', cursor: 'pointer' }}>+</button>
               </div>
             </div>
 
-            {/* 1-3. PITCH 반음 키 전조 증감 정밀 컨트롤러 */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#111827', padding: '6px 14px', borderRadius: '12px', border: '1px solid #1e293b', height: '48px', boxSizing: 'border-box' }}>
-              <span style={{ fontSize: '13px', fontWeight: '700', color: '#94a3b8', whiteSpace: 'nowrap' }}>PITCH</span>
+              <span style={{ fontSize: '14px', fontWeight: '700', color: '#94a3b8', whiteSpace: 'nowrap' }}>PITCH</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <button onClick={() => setPitchKeyOffset(prev => Math.max(-6, prev - 1))} style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#374151', color: '#ffffff', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: '700', cursor: 'pointer', userSelect: 'none' }}>-</button>
+                <button onClick={() => setPitchKeyOffset(prev => Math.max(-6, prev - 1))} style={{ width: '30px', height: '30px', backgroundColor: '#374151', color: '#ffffff', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: '700', cursor: 'pointer' }}>-</button>
                 <span style={{ fontSize: '14px', fontWeight: '700', color: pitchKeyOffset === 0 ? '#10b981' : (pitchKeyOffset > 0 ? '#fbbf24' : '#fb7171'), minWidth: '36px', textAlign: 'center' }}>{pitchKeyOffset > 0 ? `+${pitchKeyOffset}` : pitchKeyOffset}</span>
-                <button onClick={() => setPitchKeyOffset(prev => Math.min(6, prev + 1))} style={{ width: '30px', height: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#374151', color: '#ffffff', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: '700', cursor: 'pointer', userSelect: 'none' }}>+</button>
+                <button onClick={() => setPitchKeyOffset(prev => Math.min(6, prev + 1))} style={{ width: '30px', height: '30px', backgroundColor: '#374151', color: '#ffffff', border: 'none', borderRadius: '6px', fontSize: '16px', fontWeight: '700', cursor: 'pointer' }}>+</button>
               </div>
             </div>
           </div>
 
-          {/* 🔴 [2층 축: 믹스 & 레코드 통합 3등분 라인] */}
+                  {/* 🔴 [2층 축: 레코딩 및 오디오 노드 볼륨 믹싱 밸런서 지점] */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', width: '100%', gap: '14px', alignItems: 'center', boxSizing: 'border-box' }}>
-            
-            {/* 2-1. 통합 믹싱 세이프 레코딩 기능 제어 버튼 그룹 */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', height: '48px', boxSizing: 'border-box' }}>
-              <button onClick={toggleRecording} style={{ flex: 1, height: '100%', borderRadius: '10px', backgroundColor: isRecording ? '#ef4444' : '#1e293b', color: 'white', fontWeight: '700', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', border: '1px solid #374151', fontFamily: 'inherit' }}>
+              <button onClick={toggleRecording} style={{ flex: 1, height: '100%', borderRadius: '10px', backgroundColor: isRecording ? '#ef4444' : '#1e293b', color: 'white', fontWeight: '700', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', border: '1px solid #374151', fontFamily: 'inherit' }}>
                 <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: isRecording ? '#ffffff' : '#ef4444' }} />
                 {isRecording ? 'STOP' : 'RECORD'}
               </button>
-              <button onClick={toggleRecordedPlayback} disabled={!recordedUrl} style={{ flex: 1.2, height: '100%', borderRadius: '10px', backgroundColor: isRecordedPlaying ? '#10b981' : '#111827', color: 'white', fontWeight: '700', fontSize: '11px', cursor: recordedUrl ? 'pointer' : 'not-allowed', opacity: recordedUrl ? 1 : 0.4, border: '1px solid #1e293b', fontFamily: 'inherit' }}>
+              <button onClick={toggleRecordedPlayback} disabled={!recordedUrl} style={{ flex: 1.2, height: '100%', borderRadius: '10px', backgroundColor: isRecordedPlaying ? '#10b981' : '#111827', color: 'white', fontWeight: '700', fontSize: '14px', cursor: recordedUrl ? 'pointer' : 'not-allowed', opacity: recordedUrl ? 1 : 0.4, border: '1px solid #1e293b', fontFamily: 'inherit' }}>
                 {isRecordedPlaying ? 'STOP' : 'PLAY'}
               </button>
-              <button onClick={() => { if (!recordedUrl) return; const a = document.createElement('a'); a.href = recordedUrl; a.download = `harmonica_mix_${new Date().toISOString().slice(0,10)}.wav`; a.click(); }} disabled={!recordedUrl} style={{ flex: 1, height: '100%', borderRadius: '10px', backgroundColor: '#4b5563', color: 'white', fontWeight: '700', fontSize: '11px', cursor: recordedUrl ? 'pointer' : 'not-allowed', opacity: recordedUrl ? 1 : 0.3, border: '1px solid #4b5563', fontFamily: 'inherit' }}>
+              <button onClick={() => { if (!recordedUrl) return; const a = document.createElement('a'); a.href = recordedUrl; a.download = `harmonica_mix_${new Date().toISOString().slice(0,10)}.wav`; a.click(); }} disabled={!recordedUrl} style={{ flex: 1, height: '100%', borderRadius: '10px', backgroundColor: '#4b5563', color: 'white', fontWeight: '700', fontSize: '14px', cursor: recordedUrl ? 'pointer' : 'not-allowed', opacity: recordedUrl ? 1 : 0.3, border: '1px solid #4b5563', fontFamily: 'inherit' }}>
                 SAVE
               </button>
             </div>
 
-            {/* 2-2. MIC 인풋 마스터 볼륨 페이더 슬라이더 박스 */}
             <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#111827', padding: '8px 14px', borderRadius: '12px', border: '1px solid #1e293b', height: '48px', boxSizing: 'border-box' }}>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-                <span style={{ ...DASHBOARD_STYLE.label, fontSize: '11px', color: '#94a3b8' }}>MIC VOL ({Math.round(micVolume * 100)}%)</span>
+                <span style={{ ...DASHBOARD_STYLE.label, fontSize: '14px', color: '#94a3b8' }}>MIC VOL ({Math.round(micVolume * 100)}%)</span>
                 <input type="range" min="0" max="1" step="0.01" value={micVolume} onChange={(e) => { const newVol = parseFloat(e.target.value); setMicVolume(newVol); if (isRecording && micGain.current) { micGain.current.gain.setValueAtTime(newVol, Tone.getContext().currentTime); } }} style={{ width: '100%', height: '4px' }} />
               </div>
             </div>
 
-            {/* 2-3. 가이드 SYNTH 볼륨 페이더 슬라이더 박스 */}
             <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#111827', padding: '8px 14px', borderRadius: '12px', border: '1px solid #1e293b', height: '48px', boxSizing: 'border-box' }}>
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-                <span style={{ ...DASHBOARD_STYLE.label, fontSize: '11px', color: '#94a3b8' }}>SYNTH VOL ({Math.round(synthVolume * 100)}%)</span>
+                <span style={{ ...DASHBOARD_STYLE.label, fontSize: '14px', color: '#94a3b8' }}>MIDI VOL ({Math.round(synthVolume * 100)}%)</span>
                 <input type="range" min="0" max="1" step="0.01" value={synthVolume} onChange={(e) => setSynthVolume(parseFloat(e.target.value))} style={{ width: '100%', height: '4px' }} />
               </div>
             </div>
           </div>
-        </div> {/* 👈 하단 오디오 대시보드 겉박스가 정확히 닫히는 정합 마감선 완료 */}
+        </div> {/* 🎛️ 오디오 대시보드 마감 */}
 
         {/* ⚙️ 통합 환경설정 모달창 구역 */}
         {showSettings && (
           <div style={MODAL_STYLE.modalOverlay}>
             <div style={MODAL_STYLE.modalContent}>
-              
               <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#ffffff', marginBottom: '25px', marginTop: 0, borderBottom: '1px solid #374151', paddingBottom: '12px' }}>
                 🔧 {isTremolo ? 'Tremolo' : (isChrom ? 'Chromatic' : 'Diatonic')} Settings Menu
               </h2>
 
-                            {/* ----------------------------------------------------------------------- */}
-              {/* 1. 하프 튜닝 및 옵션 선택 구역 (트레몰로 메이저/마이너 2대 옵션 단축 적용) */}
-              {/* ----------------------------------------------------------------------- */}
               <div style={{ marginBottom: '20px' }}>
                 <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Harp Tuning 하프 튜닝</span>
-                <select 
-                  value={selectedTuning} 
-                  onChange={(e) => setSelectedTuning(e.target.value)}
-                  style={{ width: '100%', background: '#1e293b', color: isTremolo ? '#c084fc' : '#60a5fa', border: '1px solid #374151', borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: '700', outline: 'none', fontFamily: 'inherit' }}
-                >
+                <select value={selectedTuning} onChange={(e) => setSelectedTuning(e.target.value)} style={{ width: '100%', background: '#1e293b', color: isTremolo ? '#c084fc' : '#60a5fa', border: '1px solid #374151', borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: '700', outline: 'none' }}>
                   {isTremolo ? (
-                    // 🎯 트레몰로 트레이닝 룸 독점: 메이저/마이너 단 2가지 교본 사양 옵션 매핑
                     [
-                      { val: 'Standard', label: 'Major (메이저 # 하모니카 보이기)' },
-                      { val: 'Minor', label: 'Minor (마이너 하모니카 보이기)' }
-                    ].map(opt => (
-                      <option key={opt.val} value={opt.val}>{opt.label}</option>
-                    ))
+                      { val: 'HideAll', label: 'Major# / minor 하모니카 숨기기' },
+                      { val: 'Standard', label: 'Major 메이저 (장조 #키 하모니카 보이기)' },
+                      { val: 'Minor', label: 'minor 마이너 (단조 하모니카 보이기)' }
+                    ].map(opt => <option key={opt.val} value={opt.val}>{opt.label}</option>)
                   ) : (
                     isChrom ? (
-                      ['Standard', 'Bebop', 'C6', 'C6 Bebop', 'Diminished', 'Augmented', 'Whole Tone', 'Orchestra'].map(t => (
-                        <option key={t} value={t}>{t} Tuning</option>
-                      ))
+                      ['Standard', 'Bebop', 'C6', 'C6 Bebop', 'Diminished', 'Augmented', 'Whole Tone', 'Orchestra'].map(t => <option key={t} value={t}>{t} Tuning</option>)
                     ) : (
-                      ['Richter', 'Country', 'Melody Maker', 'Natural Minor', 'Harmonic', 'Paddy Richter'].map(t => (
-                        <option key={t} value={t}>{t} Tuning</option>
-                      ))
+                      ['Richter', 'Country', 'Melody Maker', 'Natural Minor', 'Harmonic', 'Paddy Richter'].map(t => <option key={t} value={t}>{t} Tuning</option>)
                     )
                   )}
                 </select>
               </div>
 
-
-                            {/* 2. 스케일 키 선택 및 3. 규칙 지정 구역 */}
               <div style={{ marginBottom: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                 <div>
                   <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Select Scale Key 스케일 키 선택</span>
-                  <select 
-                    value={scaleRootKey} 
-                    onChange={(e) => setScaleRootKey(e.target.value)}
-                    style={{ width: '100%', background: '#1e293b', color: '#ffffff', border: '1px solid #374151', borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: 'bold', outline: 'none', fontFamily: 'inherit' }}
-                  >
-                    {["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"].map(k => (
-                      <option key={k} value={k}>{k}</option>
-                    ))}
+                  <select value={scaleRootKey} onChange={(e) => setScaleRootKey(e.target.value)} style={{ width: '100%', background: '#1e293b', color: '#ffffff', border: '1px solid #374151', borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: 'bold', outline: 'none' }}>
+                    {["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"].map(k => <option key={k} value={k}>{k}</option>)}
                   </select>
                 </div>
-                
                 <div>
                   <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Select Scale 스케일 선택</span>
-                  <select 
-                    value={selectedScale} 
-                    onChange={(e) => setSelectedScale(e.target.value)}
-                    style={{ width: '100%', background: '#1e293b', color: '#ffffff', border: '1px solid #374151', borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: 'bold', outline: 'none', fontFamily: 'inherit' }}
-                  >
-                    {['Major / Ionian', 'Dorian', 'Phrygian', 'Lydian', 'Mixolydian', 'Aeolian / Natural Minor', 'Harmonic Minor', 'Locrian', 'Major Pentatonic', 'Major Blues', 'Minor Pentatonic', 'Minor Blues'].map(s => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
+                  <select value={selectedScale} onChange={(e) => setSelectedScale(e.target.value)} style={{ width: '100%', background: '#1e293b', color: '#ffffff', border: '1px solid #374151', borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: 'bold', outline: 'none' }}>
+                    {['Major / Ionian', 'Dorian', 'Phrygian', 'Lydian', 'Mixolydian', 'Aeolian / Natural Minor', 'Harmonic Minor', 'Locrian', 'Major Pentatonic', 'Major Blues', 'Minor Pentatonic', 'Minor Blues'].map(s => <option key={s} value={s}>{s}</option>)}
                   </select>
                 </div>
               </div>
 
-              {/* 4-A. 트레몰로 하모니카 전용 C#키 상단 레이어 보임/숨김 실시간 토글 제어 스위치 */}
+             {/* 💡 [연주자님 지침 완벽 반영]: 트레몰로 전용 장벽을 허물고, 다이아토닉 및 크로마틱 모드에서도 독립 작동하는 도수 제어 옵션 스위치 매립 */}
+              <div style={{ marginBottom: '22px' }}>
+                <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
+                  {isTremolo ? 'Notes Label Display Option (음이름 표기 방식 옵션)' : 'Note & Intervals Display Option (음이름 / 도수 표시 옵션)'}
+                </span>
+                <select 
+                  value={isTremolo ? tDisplayLabelType : (isChrom ? cDisplayLabelType : dDisplayLabelType)} 
+                  onChange={(e) => {
+                    const nextMode = e.target.value;
+                    if (isTremolo) {
+                      setTDisplayLabelType(nextMode);
+                    } else if (isChrom) {
+                      setCCurrentKey('C'); // 도수 연산 C키 오프셋 안전 기준선 정합
+                      setCDisplayLabelType(nextMode);
+                    } else {
+                      setDCurrentKey('C'); // 도수 연산 C키 오프셋 안전 기준선 정합
+                      setDDisplayLabelType(nextMode);
+                    }
+                  }} 
+                  style={{ width: '100%', background: '#1e293b', color: displayLabelType === 'DEG' ? '#10b981' : '#ffffff', border: '1px solid #374151', borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: '700', outline: 'none', fontFamily: 'inherit' }}
+                >
+                  {isTremolo ? (
+                    // 🆃 트레몰로 하모니카 전용 3대 인터페이스 옵션 유지
+                    [
+                      { val: 'ENG', label: 'English Label Mode (영문 표기 : C, D, E...)' },
+                      { val: 'KOR', label: 'Korean Label Mode (한글 표기 : 도, 레, 미...)' },
+                      { val: 'DEG', label: 'Degree Scale Mode (도수 표기 : 1, 1#, 2...)' }
+                    ].map(opt => <option key={opt.val} value={opt.val}>{opt.label}</option>)
+                  ) : (
+                    // 🅰️ / 🅱️ 다이아토닉 & 크로마틱용 연주자님 전용 2대 깔끔 옵션 (기본값: 음이름 표기)
+                    [
+                      { val: 'ENG', label: 'Note Names ON (음이름 영문 표시 : C, D, E...)' },
+                      { val: 'DEG', label: 'Intervals Mode ON (도수 표시 : 1, 1#, 2...)' }
+                    ].map(opt => <option key={opt.val} value={opt.val}>{opt.label}</option>)
+                  )}
+                </select>
+              </div>
+
+
               {isTremolo && (
                 <div style={{ marginBottom: '22px' }}>
-                  <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>C# Key Layer Control (상단 C#키 레이어 토글)</span>
-                  <select 
-                    value={showCMinusSharp ? 'ON' : 'OFF'} 
-                    onChange={(e) => setShowCMinusSharp(e.target.value === 'ON')}
-                    style={{ width: '100%', background: '#1e293b', color: showCMinusSharp ? '#c084fc' : '#ffffff', border: '1px solid #374151', borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: '900', outline: 'none', fontFamily: 'inherit' }}
-                  >
-                    <option value="ON" style={{ color: '#c084fc', fontWeight: 'bold' }}> # Key / monor Key Layer VISIBLE (윗줄 샵키 / 마이너키 표시) </option>
-                    <option value="OFF" style={{ color: '#ffffff', fontWeight: 'bold' }}> # Key / monor Key Layer HIDDEN (윗줄 샵키 / 마이너키 숨기기) </option>
+                  <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Tremolo 4th Row Display Option (4행 가이드 표기 옵션)</span>
+                  <select value={tFooterDisplayMode} onChange={(e) => setTFooterDisplayMode(e.target.value)} style={{ width: '100%', background: '#1e293b', color: '#c084fc', border: '1px solid #374151', borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: '700', outline: 'none' }}>
+                    <option value="ARROW"> Blow/Draw Directions Mode (블로우 방향 화살표 표시) </option>
+                    <option value="NUMBER"> Hole Number Mode (순수 홀 번호 표시) </option>
+                    <option value="HIDDEN"> Hide Guide Mode (4행 가이드 숨기기) </option>
                   </select>
                 </div>
               )}
-              {/* 🎯 [트레몰로 전용] 4-A-2. 음이름 한글 표시 및 순수 숫자 도수 표시 옵션 통합 제어 스위치 */}
-              {isTremolo && (
-                <div style={{ marginBottom: '22px' }}>
-                  <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Note Label Display Option (음이름 표기 방식 옵션)</span>
-                  <select 
-                    value={tDisplayLabelType} 
-                    onChange={(e) => setTDisplayLabelType(e.target.value)}
-                    style={{ width: '100%', background: '#1e293b', color: '#10b981', border: '1px solid #374151', borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: '700', outline: 'none', fontFamily: 'inherit' }}
-                  >
-                    <option value="ENG" style={{ color: '#ffffff', fontWeight: 'bold' }}> English Label Mode (영문 표기 : C, D, E...) </option>
-                    <option value="KOR" style={{ color: '#60a5fa', fontWeight: 'bold' }}> Korean Label Mode (한글 표기 : 도, 레, 미...) </option>
-                    <option value="DEG" style={{ color: '#facc15', fontWeight: 'bold' }}> Degree Scale Mode (도수 표기 : 1, 2, 3...) </option>
-                  </select>
-                  <span style={{ fontSize: '12px', color: '#475569', fontWeight: 'bold', marginTop: '4px', display: 'block' }}>
-                    * 도수 선택 시, C 하모니카 기준 9번 홀(C5)을 기점으로 순수 숫자 1~7이 연산 정렬됩니다.
-                  </span>
-                </div>
-              )}
 
-
-              {/* 4-B. Low Key Harp 선택 박스 (다이아토닉 모드일 때만 활성화 가드 작동) */}
               {!isChrom && !isTremolo && (
                 <div style={{ marginBottom: '22px' }}>
                   <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Select Low Key Harp 로우키 하프 선택</span>
-                  <select 
-                    value={isLowKey ? 'ON' : 'OFF'} 
-                    onChange={(e) => {
-                      const nm = e.target.value === 'ON';
-                      setIsLowKey(nm);
-                      setCurrentKey(nm ? 'LF' : 'C');
-                      setScaleRootKey(nm ? 'F' : 'C');
-                      setSelectedScale('Major / Ionian');
-                    }}
-                    style={{ width: '100%', background: '#1e293b', color: isLowKey ? '#10b981' : '#ffffff', border: '1px solid #374151', borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: '900', outline: 'none', fontFamily: 'inherit' }}
-                  >
-                    <option value="OFF" style={{ color: '#ffffff', fontWeight: 'bold' }}> Standard Harp Key Mode </option>
-                    <option value="ON" style={{ color: '#10b981', fontWeight: 'bold' }}> Low Key Harp Key Mode </option>
+                  <select value={isLowKey ? 'ON' : 'OFF'} onChange={(e) => { const nm = e.target.value === 'ON'; setIsLowKey(nm); setCurrentKey(nm ? 'LF' : 'C'); setScaleRootKey(nm ? 'F' : 'C'); setSelectedScale('Major / Ionian'); }} style={{ width: '100%', background: '#1e293b', color: isLowKey ? '#10b981' : '#ffffff', border: '1px solid #374151', borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: '900', outline: 'none' }}>
+                    <option value="OFF"> Standard Harp Key Mode </option>
+                    <option value="ON"> Low Key Harp Key Mode </option>
                   </select>
                 </div>
               )}
 
-              {/* 5. 스케일 노트 하이라이트 활성화 제어 스위치 모듈 */}
               <div style={{ marginBottom: '22px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-                  <div>
-                    <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '2px' }}>Scale Notes Highlight 스케일 노트 하이라이트</span>
-                    <span style={{ fontSize: '13px', color: '#475569', fontWeight: 'bold' }}>선택된 스케일 음정을 노란색 글씨로 시각화합니다.</span>
-                  </div>
-                  <div style={{ display: 'flex', backgroundColor: '#111827', padding: '4px', borderRadius: '10px', border: '1px solid #374151', flexShrink: 0 }}>
-                    <button onClick={() => setUseScaleHighlight(false)} style={{ padding: '6px 14px', backgroundColor: !useScaleHighlight ? '#ef4444' : 'transparent', border: 'none', color: !useScaleHighlight ? 'white' : '#64748b', borderRadius: '8px', fontWeight: '900', fontSize: '12px', cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit' }}>OFF (기본)</button>
-                    <button onClick={() => setUseScaleHighlight(true)} style={{ padding: '6px 14px', marginLeft: '4px', backgroundColor: useScaleHighlight ? '#10b981' : '#transparent', border: 'none', color: useScaleHighlight ? 'black' : '#64748b', borderRadius: '8px', fontWeight: '900', fontSize: '12px', cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit' }}>ON 활성화</button>
+                  <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold' }}>Scale Notes Highlight 스케일 노트 하이라이트</span>
+                  <div style={{ display: 'flex', backgroundColor: '#111827', padding: '4px', borderRadius: '10px', border: '1px solid #374151' }}>
+                    <button onClick={() => setUseScaleHighlight(false)} style={{ padding: '6px 14px', backgroundColor: !useScaleHighlight ? '#ef4444' : 'transparent', border: 'none', color: !useScaleHighlight ? 'white' : '#64748b', borderRadius: '8px', fontWeight: '900', fontSize: '12px', cursor: 'pointer' }}>OFF</button>
+                    <button onClick={() => setUseScaleHighlight(true)} style={{ padding: '6px 14px', marginLeft: '4px', backgroundColor: useScaleHighlight ? '#10b981' : 'transparent', border: 'none', color: useScaleHighlight ? 'black' : '#64748b', borderRadius: '8px', fontWeight: '900', fontSize: '12px', cursor: 'pointer' }}>ON</button>
                   </div>
                 </div>
               </div>
 
-                          {/* 6. 기본 피치 설정 구역 */}
               <div style={{ marginBottom: '22px' }}>
                 <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '6px' }}>Standard Pitch 표준 피치 설정 : A={baseFreq}Hz</span>
                 <input type="range" min="430" max="450" step="1" value={baseFreq} onChange={(e) => setBaseFreq(parseInt(e.target.value))} style={{ width: '100%', height: '6px' }} />
               </div>
 
-              {/* 7. 허용 오차 디테일 구역 */}
               <div style={{ marginBottom: '22px' }}>
                 <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Tolerance 튜너 허용 오차 (±{tolerance}c)</span>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  {['5', '10', '15', '20'].map(val => (
-                    <button key={val} onClick={() => setTolerance(parseInt(val))} style={{ flex: 1, padding: '12px 0', borderRadius: '10px', border: 'none', backgroundColor: tolerance === parseInt(val) ? '#10b981' : '#374151', color: tolerance === parseInt(val) ? 'black' : 'white', fontWeight: '900', cursor: 'pointer', fontSize: '15px', fontFamily: 'inherit' }}>±{val}</button>
-                  ))}
+                  {['5', '10', '15', '20'].map(val => <button key={val} onClick={() => setTolerance(parseInt(val))} style={{ flex: 1, padding: '12px 0', borderRadius: '10px', border: 'none', backgroundColor: tolerance === parseInt(val) ? '#10b981' : '#374151', color: tolerance === parseInt(val) ? 'black' : 'white', fontWeight: '900', cursor: 'pointer' }}>±{val}</button>)}
                 </div>
               </div>
 
-              {/* 8. 튜너 감도 감소 실시간 마스터 컨트롤러 모듈 */}
               <div style={{ marginBottom: '22px' }}>
-                <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Tuner Sensitivity Reduction 튜너 감도 감소 제어</span>
+                <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Tuner Sensitivity Reduction 감도 제어</span>
                 <div style={{ display: 'flex', gap: '6px' }}>
-                  {['0', '10', '20', '30', '40'].map(val => {
-                    const numVal = parseInt(val, 10);
-                    return (
-                      <button key={val} onClick={() => setSensitivityReduction(numVal)} style={{ flex: 1, padding: '12px 0', borderRadius: '10px', border: 'none', backgroundColor: sensitivityReduction === numVal ? '#2563eb' : '#374151', color: 'white', fontWeight: '900', cursor: 'pointer', fontSize: '14px', fontFamily: 'inherit', transition: 'all 0.15s' }}>{numVal === 0 ? '현재 상태' : `-${numVal}%`}</button>
-                    );
-                  })}
+                  {['0', '10', '20', '30', '40'].map(val => <button key={val} onClick={() => setSensitivityReduction(parseInt(val))} style={{ flex: 1, padding: '12px 0', borderRadius: '10px', border: 'none', backgroundColor: sensitivityReduction === parseInt(val) ? '#2563eb' : '#374151', color: 'white', fontWeight: '900', cursor: 'pointer' }}>{val === '0' ? '기본' : `-${val}%`}</button>)}
                 </div>
               </div>
 
-              {/* 9. 공간계 조절 구역 */}
               <div style={{ marginBottom: '25px', padding: '18px', backgroundColor: '#1f2937', borderRadius: '14px', border: '1px solid #374151' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', gap: '10px', flexWrap: 'nowrap' }}>
-                  <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', whiteSpace: 'nowrap' }}>Reverb Master Control</span>
-                  <div style={{ display: 'flex', backgroundColor: '#111827', padding: '4px', borderRadius: '10px', border: '1px solid #374151' }}>
-                    <button onClick={() => setUseReverb(!useReverb)} style={{ padding: '6px 14px', backgroundColor: useReverb ? '#10b981' : '#ef4444', border: 'none', color: useReverb ? 'black' : 'white', borderRadius: '8px', fontWeight: '900', fontSize: '12px', cursor: 'pointer', transition: 'all 0.15s', fontFamily: 'inherit' }}>{useReverb ? 'ON' : 'OFF'}</button>
-                    <button onClick={() => useReverb && setReverbMode('standard')} disabled={!useReverb} style={{ padding: '6px 12px', marginLeft: '4px', backgroundColor: useReverb && reverbMode === 'standard' ? '#2563eb' : 'transparent', border: 'none', color: useReverb && reverbMode === 'standard' ? 'white' : '#64748b', borderRadius: '8px', fontWeight: 'bold', fontSize: '12px', cursor: useReverb ? 'pointer' : 'not-allowed', opacity: useReverb ? 1 : 0.3, transition: 'all 0.15s', fontFamily: 'inherit' }}>STANDARD</button>
-                    <button onClick={() => useReverb && setReverbMode('spring')} disabled={!useReverb} style={{ padding: '6px 12px', marginLeft: '4px', backgroundColor: useReverb && reverbMode === 'spring' ? '#2563eb' : 'transparent', border: 'none', color: useReverb && reverbMode === 'spring' ? 'white' : '#64748b', borderRadius: '8px', fontWeight: 'bold', fontSize: '12px', cursor: useReverb ? 'pointer' : 'not-allowed', opacity: useReverb ? 1 : 0.3, transition: 'all 0.15s', fontFamily: 'inherit' }}>SPRING</button>
-                  </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                  <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold' }}>Reverb Master Control</span>
+                  <button onClick={() => setUseReverb(!useReverb)} style={{ padding: '6px 14px', backgroundColor: useReverb ? '#10b981' : '#ef4444', border: 'none', color: useReverb ? 'black' : 'white', borderRadius: '8px', fontWeight: '900', fontSize: '12px', cursor: 'pointer' }}>{useReverb ? 'ON' : 'OFF'}</button>
                 </div>
-                <div style={{ borderTop: '1px solid #374151', paddingTop: '14px', marginTop: '10px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <span style={{ fontSize: '15px', color: '#94a3b8', fontWeight: 'bold' }}>Reverb Amount 리버브 효과량(Wet)</span>
-                    <span style={{ fontSize: '15px', color: '#10b981', fontWeight: '900' }}>{Math.round(reverbWet * 100)}%</span>
-                  </div>
-                  <input type="range" min="0" max="1" step="0.05" value={reverbWet} onChange={(e) => setReverbWet(parseFloat(e.target.value))} disabled={!useReverb} style={{ width: '100%', height: '6px', cursor: useReverb ? 'pointer' : 'not-allowed', opacity: useReverb ? 1 : 0.4 }} />
-                </div>
+                <input type="range" min="0" max="1" step="0.05" value={reverbWet} onChange={(e) => setReverbWet(parseFloat(e.target.value))} disabled={!useReverb} style={{ width: '100%', height: '6px' }} />
               </div>
-                              <button onClick={() => setShowSettings(false)} style={{ ...MODAL_STYLE.saveBtn, fontSize: '20px', padding: '18px' }}>SAVE & CLOSE</button>
+
+              <button onClick={() => setShowSettings(false)} style={{ ...MODAL_STYLE.saveBtn }}>SAVE & CLOSE</button>
             </div>
           </div>
         )}
 
-        {/* 🎯 녹음 시작 전 화면 정중앙 3, 2, 1 초거대 입체 카운트다운 팝업 오버레이 */}
+        {/* 🎯 녹음 시작 전 카운트다운 팝업 */}
         {countdown !== null && (
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(5, 10, 20, 0.88)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 9999, pointerEvents: 'auto', fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, sans-serif' }}>
-            <div style={{ fontSize: 'calc(80px + 12vw)', fontWeight: '950', color: countdown === 3 ? '#ef4444' : (countdown === 2 ? '#eab308' : '#10b981'), textShadow: '0 10px 40px rgba(0,0,0,0.9), 0 0 80px rgba(255,255,255,0.15)', userSelect: 'none' }}>{countdown}</div>
-            <span style={{ fontSize: '24px', fontWeight: '800', color: '#94a3b8', marginTop: '20px', letterSpacing: '2px', textShadow: '0 2px 4px rgba(0,0,0,0.8)' }}>PREPARING RECORD...</span>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(5, 10, 20, 0.88)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
+            <div style={{ fontSize: 'calc(80px + 12vw)', fontWeight: '950', color: countdown === 3 ? '#ef4444' : (countdown === 2 ? '#eab308' : '#10b981') }}>{countdown}</div>
           </div>
         )}
 
@@ -1897,12 +2051,69 @@ function NewFeaturePage({ onRouteClick }) {
           </svg>
         </div>
 
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {/* 🎯 [5도권 최종 고정 완치] 회전 변수(rotationAngle) 전면 소각형 절대 위치 고정 엔진 */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <div style={CIRCLE_STYLE.staticOverlayLayer}>
-          {romanDegrees.map((degree, dIdx) => (
-            <div key={dIdx} style={{ ...CIRCLE_STYLE.romanDegreeBadge, left: `calc(50% + ${romanCircleRadius * Math.cos((degree.angle - 90) * Math.PI / 180)}%)`, top: `calc(50% + ${romanCircleRadius * Math.sin((degree.angle - 90) * Math.PI / 180)}%)`, transform: 'translate(-50%, -50%)', filter: 'drop-shadow(0px 3px 3px rgba(0, 0, 0, 0.85))', willChange: 'transform' }}>
-              {degree.text}
-            </div>
-          ))}
+          
+          {romanDegrees.map((degree, dIdx) => {
+            let targetDegreeAngle = 0;
+
+            if (displayMode === 'harmonica') {
+              // 🅰️ [Harmonica Key 모드]: 순정 지정 각도 고정 (원판이 돌아가도 글자는 제자리 고정)
+              targetDegreeAngle = degree.angle;
+            } else {
+              // 🅱️ [Song Key 모드]: 연주자님 지침 절대 지정 각도 좌표 고정!
+              // 💡 [완치 완결]: 회전 변수인 rotationAngle을 수식에서 완전히 소각하여, 
+              // 키를 바꾸거나 원판을 드래그해도 로마자 도수들이 눈금처럼 절대 움직이지 않고 고정되도록 조율했습니다.
+              if (degree.text === 'IV' || dIdx === 11) {
+                targetDegreeAngle = 30;    // IV = 30도 절대 고정
+              } else {
+                switch (dIdx) {
+                  case 0:  targetDegreeAngle = 0; break;       // I = 0도 (12시 방향) 절대 고정
+                  case 1:  targetDegreeAngle = -30; break;     // V = -30도 절대 고정
+                  case 2:  targetDegreeAngle = -60; break;     // IIm = -60도 절대 고정
+                  case 3:  targetDegreeAngle = -90; break;     // VIm = -90도 절대 고정
+                  case 4:  targetDegreeAngle = -120; break;    // IIIm = -120도 절대 고정
+                  case 5:  targetDegreeAngle = -150; break;    // VIIdim = -150도 절대 고정
+                  default: targetDegreeAngle = degree.angle;
+                }
+              }
+            }
+
+            // 🎯 [선법 코드 라벨 변환]: Song Key 모드일 때만 마이너(m) 및 디미니쉬(dim) 기호 수평 이식
+            let displayDegreeText = degree.text;
+            if (displayMode === 'song') {
+              if (dIdx === 2) displayDegreeText = 'IIm';
+              if (dIdx === 4) displayDegreeText = 'IIIm';
+              if (dIdx === 3) displayDegreeText = 'VIm';
+              if (dIdx === 5) displayDegreeText = 'VIIdim';
+            }
+
+            return (
+              <div 
+                key={dIdx} 
+                style={{ 
+                  ...CIRCLE_STYLE.romanDegreeBadge, 
+                  left: `calc(50% + ${romanCircleRadius * Math.cos((targetDegreeAngle - 90) * Math.PI / 180)}%)`, 
+                  top: `calc(50% + ${romanCircleRadius * Math.sin((targetDegreeAngle - 90) * Math.PI / 180)}%)`, 
+                  transform: 'translate(-50%, -50%)', 
+                  filter: 'drop-shadow(0px 3px 3px rgba(0, 0, 0, 0.85))', 
+                  willChange: 'transform',
+                  // 토닉 1도(I) 기호는 형광 연두색 특별 수호, 나머지는 정갈한 회청색
+                  color: dIdx === 0 ? '#59ff00' : '#a3b8cc', 
+                  fontWeight: '800',
+                  pointerEvents: 'none',
+                  // 💡 원판 드래그와 무관하게 글자가 따로 돌며 튕기지 않도록 트랜지션 정합 보존
+                  transition: 'left 0.4s ease, top 0.4s ease' 
+                }}
+              >
+                {displayDegreeText}
+              </div>
+            );
+          })}
+
+          {/* 💡 포지션 라벨 연동 구역 (기존 순정 로직의 물리 법칙을 완벽히 보존 수호) */}
           {fixedPositionLabels.map((pos, pIdx) => {
             const targetAngle = displayMode === 'harmonica' ? pos.harmonicaAngle : pos.songAngle;
             return (
@@ -1911,6 +2122,7 @@ function NewFeaturePage({ onRouteClick }) {
               </div>
             );
           })}
+
         </div>
       </div>
 
@@ -1970,7 +2182,7 @@ function NewFeaturePage({ onRouteClick }) {
 }
 
 // =========================================================================
-// 🎯 [교정 완결] 그래픽 요소 완전 배제형 텍스트 중심 3대 파트 마스터 사용 설명서
+// 🎯 [파트 1/2 완치본] AppGuidePage 전반부 인프라 및 트레이닝 기능 설명 명세 구역
 // =========================================================================
 function AppGuidePage({ onRouteClick }) {
   const gStyle = {
@@ -1980,11 +2192,11 @@ function AppGuidePage({ onRouteClick }) {
     mainTitle: { fontSize: '26px', fontWeight: '700', color: '#10b981', margin: 0 },
     backBtn: { backgroundColor: '#1f2937', color: '#f87171', border: '1px solid #ef4444', borderRadius: '12px', padding: '10px 18px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.15s' },
     sectionBox: { width: '100%', marginBottom: '40px', borderBottom: '1px solid #1e293b', paddingBottom: '35px' },
-    secTitle: { fontSize: '20px', fontWeight: '700', color: '#60a5fa', marginBottom: '16px', borderLeft: '4px solid #2563eb', paddingLeft: '12px' },
+    secTitle: { fontSize: '20px', fontWeight: '600', color: '#60a5fa', marginBottom: '16px', borderLeft: '4px solid #2563eb', paddingLeft: '12px', marginTop: '24px' },
     subGroup: { marginBottom: '18px', paddingLeft: '4px' },
-    subTitle: { fontSize: '15px', fontWeight: '700', color: '#f8fafc', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' },
+    subTitle: { fontSize: '15px', fontWeight: '400', color: '#f8fafc', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' },
     text: { fontSize: '14px', color: '#94a3b8', lineHeight: '1.8', margin: '0 0 6px 0' },
-    boldText: { color: '#ffffff', fontWeight: '600' }
+    boldText: { color: '#ffffff', fontWeight: '300' }
   };
 
   return (
@@ -1996,31 +2208,52 @@ function AppGuidePage({ onRouteClick }) {
           🚪 나가기 EXIT
           </button>
         </div>
-        {/* 🗺️ 1파트: 기본 화면 편 명세 */}
+        
         <div style={gStyle.rowCard}>
           <div>
-            <h3 style={gStyle.secTitle}> 하모니카 마스터 트레이닝 센터 </h3>
-                <div style={gStyle.subTitle}>• 하나의 앱으로 다이아토닉 하모니카와 크로매틱 하모니카 트레이닝이 가능 </div>
+            <h3 style={gStyle.secTitle}> 하모니카 트레이닝 센터 </h3>
+                <div style={gStyle.subTitle}>• 하나의 앱으로 다이아토닉 하모니카, 크로매틱 하모니카, 트레몰로 하모니카 트레이닝이 가능 </div>
                 <div style={gStyle.subTitle}>• 다양한 키의 하모니카를 지원하며, 로우키와 하이키 모두 설정해 사용 가능 </div>
+                <div style={gStyle.subTitle}>• 다양한 키와 마이너키 트레몰로 하모니카를 지원, 한글 음이름, 도수 등으로 설정해 사용 가능 </div>
                 <div style={gStyle.subTitle}>• 다이아토닉 하모니카와 크로매틱 하모니카의 다양한 튜닝모드 설정 가능 </div>
                 <div style={gStyle.subTitle}>• 다양한 스케일 모드를 지원하며 스케일 노트를 학습하며 트레이닝 가능 </div>
                 <div style={gStyle.subTitle}>• 내장 미디음원을 통해 음정 사각형을 눌러 선택한 음정의 청음이 가능 </div>
+            
             <h3 style={gStyle.secTitle}> 리얼타임 정밀 듀얼 튜닝 센서 </h3>
                 <div style={gStyle.subTitle}>• 정밀한 인티케이터 튜너 센서를 사용해 음정 연습 트레이닝에 최적화 </div>
                 <div style={gStyle.subTitle}>• 컬러를 통해 음정의 정밀도를 시각적으로 인지가 가능한 트레이닝을 지원 </div>
-                <div style={gStyle.subTitle}>• 튜너의 정확도를 위해 표준음정 설정 "A4 =  Hz" 기능 설정 가능 </div>
+                <div style={gStyle.subTitle}>• 튜너의 정확도를 위해 표준음정 설정 "A4 = Hz" 기능 설정 가능 </div>
                 <div style={gStyle.subTitle}>• 음정 허용 수치의 폭을 단계별로 지정하여 단계별 트레이닝이 가능 </div>
                 <div style={gStyle.subTitle}>• 마이크의 민감도를 조정해 불필요한 수음을 조정 가능 </div>
+            
             <h3 style={gStyle.secTitle}> 배킹트랙과 하모니카 연주 실시간 믹스 녹음기능 </h3>
                 <div style={gStyle.subTitle}>• 배킹트랙을 선택해 재생 속도 조절이 가능하고 키 배킹트랙의 키 조정이 가능 </div>
                 <div style={gStyle.subTitle}>• 배킹트랙과 마이크의 녹음 음량 크기 설정이 가능 </div>
                 <div style={gStyle.subTitle}>• 배킹트랙을 플레이 하면서 하모니카 연주를 믹스해 녹음하는 기능 </div>
                 <div style={gStyle.subTitle}>• 녹음한 파일을 바로 확인해 들어 볼 수 있으며, 저장 및 배포 가능 </div>
                 <div style={gStyle.subTitle}>• 다양한 스케일 모드를 지원하며 스케일 노트를 학습하며 트레이닝 가능 </div>
-             <h3 style={gStyle.secTitle}> 하모니카 연습이 조금이나마 즐거워 지시길 바랍니다 </h3>
+             <h3 style={gStyle.secTitle}> 하모니카 연습이 즐거워지길 바랍니다 </h3>
                 <div style={gStyle.subTitle}>• 하모니카로 당신의 인생을 연주하세요! 당신의 연주에 담길 당신의 인생을 응원합니다 </div>    
+            
             <h3 style={gStyle.secTitle}> Help & Tutorial </h3>
-                <div style={gStyle.subTitle}> https://sites.google.com/view/allofharp</div>
+                {/* 🎯 [연주자님 지침 완벽 반영]: 주소를 클릭하면 지정하신 커피바다 웹사이트로 즉시 새 창 이동 처리 */}
+                <div 
+                  onClick={() => window.open('https://sites.google.com/view/harpclub', '_blank', 'noopener,noreferrer')}
+                  style={{ 
+                    ...gStyle.subTitle, 
+                    color: '#10b981', 
+                    cursor: 'pointer', 
+                    textDecoration: 'underline',
+                    display: 'inline-block',
+                    transition: 'color 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => e.currentTarget.style.color = '#34d399'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = '#10b981'}
+                  title="클릭하시면 커피바다 하모니카 길라잡이 사이트로 새 창 이동합니다."
+                >
+                   Harmonica Training Center Tutorial 하모니카 트레이닝 센터 사용방법 보기
+                </div>
+            
             <h3 style={gStyle.secTitle}> Contact </h3>
                 <div style={gStyle.subTitle}> 279.lee@gmail.com </div>
              </div>
@@ -2036,4 +2269,4 @@ function AppGuidePage({ onRouteClick }) {
       </div>
     </div>
   );
-}
+} // 👈 💡 [AppGuidePage 컴포넌트 종료 중괄호 완전 정합]
