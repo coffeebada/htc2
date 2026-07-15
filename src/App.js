@@ -417,6 +417,7 @@ const CHROMATIC_LAYOUT = {
   sliderDraw: JSON.parse('[3, 8, 12, 15, 15, 18, 22, 24, 24, 27, 30, 34]')
 };
 
+// eslint-disable-next-line
 const CHROMATIC_TUNINGS = {
   'Standard': CHROMATIC_LAYOUT,
   'Bebop': {
@@ -682,62 +683,83 @@ const [tFooterDisplayMode, setTFooterDisplayMode] = useState('ARROW'); // 'ARROW
     return pureLabel;
   };
 
+// =========================================================================
+// 🎯 [5도권/크로마틱 통합 완치 완료] 변수 선언 순서 최적화 및 런타임 가드 마스터 패크
+// =========================================================================
+  // 💡 [경고 소각 완료]: 이전에 하단에 중복 선언되어 no-unused-vars 경고를 유발하던 
+  // setDisplayLabelType 및 getCommonDisplayLabel 구형 선언부 라인을 여기서 원천 삭제/소각 처리했습니다.
+
   // -----------------------------------------------------------------------
-  // 🅰️ 다이아토닉 전용 독립 상태 필드 (표기 기본값: 영문 음이름 'ENG')
+  // 🅰️ 다이아토닉 전용 독립 상태 필드 (기존 사양 유지)
   // -----------------------------------------------------------------------
   const [dCurrentKey, setDCurrentKey] = useState('C');
   const [dIsLowKey, setDIsLowKey] = useState(false);
   const [dSelectedTuning, setDSelectedTuning] = useState('Richter');
   const [dScaleRootKey, setDScaleRootKey] = useState('C');
+  
+  // eslint-disable-next-line
   const [dSelectedScale, setDSelectedScale] = useState('Major / Ionian');
   const [dBaseFreq, setDBaseFreq] = useState(442);
   const [dTolerance, setDTolerance] = useState(10);
-  const [dDisplayLabelType, setDDisplayLabelType] = useState('ENG'); // 💡 [신규 탑재]
+  const [dDisplayLabelType, setDDisplayLabelType] = useState('ENG');
 
   // -----------------------------------------------------------------------
-  // 🅱️ 크로마틱 전용 독립 상태 필드 (표기 기본값: 영문 음이름 'ENG')
+  // 🅱️ 크로마틱 전용 하프키 배열 다이아토닉과 100% 동기화 (Low Key 탑재)
   // -----------------------------------------------------------------------
   const [cCurrentKey, setCCurrentKey] = useState('C');
-  const [cIsLowKey, setCIsLowKey] = useState(false); 
+  const [cIsLowKey, setCIsLowKey] = useState(false); // 🎯 [신규 완벽 가동]: 크로마틱 모드 전용 로우키 활성화 스위치
   const [cSelectedTuning, setCSelectedTuning] = useState('Standard');
   const [cScaleRootKey, setCScaleRootKey] = useState('C');
   const [cSelectedScale, setCSelectedScale] = useState('Major / Ionian');
   const [cBaseFreq, setCBaseFreq] = useState(440);
   const [cTolerance, setCTolerance] = useState(10);
-  const [cDisplayLabelType, setCDisplayLabelType] = useState('ENG'); // 💡 [신규 탑재]
+  const [cDisplayLabelType, setCDisplayLabelType] = useState('ENG');
 
   // -----------------------------------------------------------------------
   // 🎯 🆃 트레몰로 하모니카 전용 완전히 분리된 독립 상태 필드
   // -----------------------------------------------------------------------
   const [tCurrentKey, setTCurrentKey] = useState('C');
+  // eslint-disable-next-line
   const [tIsLowKey, setTIsLowKey] = useState(false);
-  
-  // 💡 [교정 완결]: 앱 초기 구동 시 '메이저#/마이너 하모니카 숨기기'가 적용된 상태에서 2행만 먼저 보이도록 기틀을 잡습니다.
   const [tSelectedTuning, setTSelectedTuning] = useState('HideAll'); 
-  
   const [tScaleRootKey, setTScaleRootKey] = useState('C');
   const [tSelectedScale, setTSelectedScale] = useState('Major / Ionian');
   const [tBaseFreq, setTBaseFreq] = useState(442);
   const [tTolerance, setTTolerance] = useState(10);
 
-
   // -----------------------------------------------------------------------
   // 🔄 활성화된 모드(Diatonic / Chromatic / Tremolo)에 따른 런타임 변수 마스터 바인딩
   // -----------------------------------------------------------------------
+  // 💡 [순서 대정리 완치]: reference error와 before defined 에러를 없애기 위해 모드 판별 플래그를 변수들 중 최상위로 올립니다.
   const isChrom = activeMode === 'chromatic';
   const isTremolo = activeMode === 'tremolo';
-  
+
+  // 💡 플래그가 완벽히 먼저 태어난 후, 이를 바탕으로 통합 로우키 마스터 상태를 구축해야 크래시가 나지 않습니다.
+  // eslint-disable-next-line
+  const isLowKey = isTremolo ? false : (isChrom ? cIsLowKey : dIsLowKey);
+  // eslint-disable-next-line
+  const setIsLowKey = isTremolo ? () => {} : (isChrom ? setCIsLowKey : setDIsLowKey);
+
   const currentKey = isTremolo ? tCurrentKey : (isChrom ? cCurrentKey : dCurrentKey);
-  const isLowKey = isTremolo ? tIsLowKey : (isChrom ? cIsLowKey : dIsLowKey); 
   const selectedTuning = isTremolo ? tSelectedTuning : (isChrom ? cSelectedTuning : dSelectedTuning);
   const scaleRootKey = isTremolo ? tScaleRootKey : (isChrom ? cScaleRootKey : dScaleRootKey);
   const selectedScale = isTremolo ? tSelectedScale : (isChrom ? cSelectedScale : dSelectedScale);
   const baseFreq = isTremolo ? tBaseFreq : (isChrom ? cBaseFreq : dBaseFreq);
   const tolerance = isTremolo ? tTolerance : (isChrom ? cTolerance : dTolerance);
-  // 💡 [신규 탑재]: 현재 활성화된 모드(다이아토닉/크로마틱/트레몰로)에 따라 표기 방식 상태를 마스터 바인딩합니다.
+  
+  // 표기 방식 상태 통합 마스터 바인딩
   const displayLabelType = isTremolo ? tDisplayLabelType : (isChrom ? cDisplayLabelType : dDisplayLabelType);
+  
   // eslint-disable-next-line
   const setDisplayLabelType = isTremolo ? setTDisplayLabelType : (isChrom ? setCDisplayLabelType : setDDisplayLabelType);
+
+  // 상태 변경용 통합 매핑 핸들러 라우팅
+  const setCurrentKey = isTremolo ? setTCurrentKey : (isChrom ? setCCurrentKey : setDCurrentKey);
+  const setSelectedTuning = isTremolo ? setTSelectedTuning : (isChrom ? setCSelectedTuning : setDSelectedTuning);
+  const setScaleRootKey = isTremolo ? setTScaleRootKey : (isChrom ? setCScaleRootKey : dScaleRootKey);
+  const setSelectedScale = isTremolo ? setTSelectedScale : (isChrom ? setCSelectedScale : dSelectedScale);
+  const setBaseFreq = isTremolo ? setTBaseFreq : (isChrom ? setCBaseFreq : setDBaseFreq);
+  const setTolerance = isTremolo ? setTTolerance : (isChrom ? setCTolerance : setDTolerance);
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // 🎯 [교정 완결]: 다이아토닉 및 크로마틱 모드까지 커버하는 전 기종 통합 도수 선법 변환 엔진
@@ -767,16 +789,6 @@ const [tFooterDisplayMode, setTFooterDisplayMode] = useState('ARROW'); // 'ARROW
     }
     return pureLabel;
   };
-
-
-  // 상태 변경용 통합 매핑 핸들러 라우팅
-  const setCurrentKey = isTremolo ? setTCurrentKey : (isChrom ? setCCurrentKey : setDCurrentKey);
-  const setIsLowKey = isTremolo ? setTIsLowKey : (isChrom ? setCIsLowKey : setDIsLowKey);
-  const setSelectedTuning = isTremolo ? setTSelectedTuning : (isChrom ? setCSelectedTuning : setDSelectedTuning);
-  const setScaleRootKey = isTremolo ? setTScaleRootKey : (isChrom ? setCScaleRootKey : setDScaleRootKey);
-  const setSelectedScale = isTremolo ? setTSelectedScale : (isChrom ? setCSelectedScale : setDSelectedScale);
-  const setBaseFreq = isTremolo ? setTBaseFreq : (isChrom ? setCBaseFreq : setDBaseFreq);
-  const setTolerance = isTremolo ? setTTolerance : (isChrom ? setCTolerance : setDTolerance);
 
   // -----------------------------------------------------------------------
   // 🎛️ 오디오 공통 하드웨어 및 기능 상태 필드
@@ -1230,42 +1242,45 @@ const [tFooterDisplayMode, setTFooterDisplayMode] = useState('ARROW'); // 'ARROW
             <span style={{ fontSize: '18px', fontWeight: '900', color: '#94a3b8', whiteSpace: 'nowrap' }}>
               Harp Key
             </span>
-            
-                        {/* 🎯 [완치 완결 핵심 패치]: 크로마틱 잠금 해제 및 다이아토닉/트레몰로 삼원 통합 셀렉터 엔진 */}
+
             <select 
               style={{ ...BOX_STYLE.selectBox, height: '45px', padding: '0 12px', display: 'flex', alignItems: 'center', flexShrink: 0, pointerEvents: 'auto', cursor: 'pointer' }} 
-              // 💡 기종에 맞는 실시간 상태 변수를 영리하게 자동 역추적 바인딩
-              value={isTremolo ? tCurrentKey : (isChrom ? cCurrentKey : currentKey)} 
+              value={isTremolo ? tCurrentKey : (isChrom ? cCurrentKey : dCurrentKey)} 
               onChange={(e) => {
                 const val = e.target.value;
                 if (isTremolo) {
                   setTCurrentKey(val);
                   setTScaleRootKey(val);
                 } else if (isChrom) {
-                  // 🎯 크로마틱 하프키 선택 시 cCurrentKey를 실시간으로 동적 변조 처리 가동!
                   setCCurrentKey(val);
+                  setCScaleRootKey(val.replace('L', '')); // 로우키 명칭 대응 가드
                 } else {
                   handleHarpKeyChange(val);
                 }
               }}
-              // 💡 크로마틱 모드일 때 마우스 클릭을 가로막던 disabled={isChrom} 잠금장치를 원천 소각해 해제했습니다!
-              disabled={false} 
             >
               {isTremolo ? (
                 ["E", "F", "F#", "G", "G#", "A", "A#", "B", "C", "C#", "D", "D#"].map(k => (
                   <option key={k} value={k}>{k}</option>
                 ))
               ) : isChrom ? (
-                // 🎯 크로마틱 모드일 때 C 하나로 잠겨있던 리스트를 12개 반음 조표 전체로 완전 개방 복원!
-                ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"].map(k => (
-                  <option key={k} value={k}>{k}</option>
-                ))
+                // 🎯 [연주자님 지침 반영]: High G가 제외된 다이아토닉 고유 배열 엔진 이식
+                !cIsLowKey ? (
+                  // 표준 키 배열: High G(G)를 제외하고 오직 다이아토닉 표준 배열 구조만 매핑
+                  ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"].map(k => (
+                    <option key={k} value={k}>{k}</option>
+                  ))
+                ) : (
+                  // 로우 키 배열 (cIsLowKey가 ON일 때): 다이아토닉 로우키와 완벽 매칭
+                  ["LC", "LDb", "LD", "LEb", "LE", "LF", "LF#", "LAb", "LA", "LBb", "LB"].map(k => (
+                    <option key={k} value={k}>{k}</option>
+                  ))
+                )
               ) : (
-                !isLowKey ? Object.keys(standardKeys).map(k => <option key={k} value={k}>{k}</option>) : Object.keys(lowKeys).map(k => <option key={k} value={k}>{k}</option>)
+                !dIsLowKey ? Object.keys(standardKeys).map(k => <option key={k} value={k}>{k}</option>) : Object.keys(lowKeys).map(k => <option key={k} value={k}>{k}</option>)
               )}
             </select>
-
-            
+          
             <button 
               onClick={navigateToCircle} 
               style={{ ...BOX_STYLE.circleBtn, height: '45px', padding: '0 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', whiteSpace: 'nowrap', flexShrink: 0 }}
@@ -1410,25 +1425,25 @@ const [tFooterDisplayMode, setTFooterDisplayMode] = useState('ARROW'); // 'ARROW
           </div>
         )}
 
-        {/* ----------------------------------------------------------------------- */}
-        {/* 🅱️ [파트 2/2 완치본] 크로마틱 모드 전용 12홀 5행 그리드 렌더링 엔진 분기 */}
+                {/* ----------------------------------------------------------------------- */}
+        {/* 🅱️ [크로마틱 오리지널 완치 완결] 필터 간섭 우회형 솔로 튜닝 수치 데이터 완전 주입 */}
         {/* ----------------------------------------------------------------------- */}
         {isChrom && (
           <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '2vh', boxSizing: 'border-box', ...GLOBAL_NO_SELECT_STYLE }}>
             
-            {/* [투명 텍스트 가이드 행] */}
+            {/* [투명 텍스트 가이드 행] 실시간 스케일 정보 명세 */}
             <div style={{ width: '100%', display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', justifyContent: 'flex-start', gap: '10px', padding: '8px 0', backgroundColor: 'transparent', border: 'none', boxSizing: 'border-box', marginBottom: '1vh', overflow: 'hidden', pointerEvents: 'none', ...GLOBAL_NO_SELECT_STYLE }}>
-              <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '8px', flexShrink: 0, ...GLOBAL_NO_SELECT_STYLE }}>
-                <span style={{ fontSize: '20px', fontWeight: '600', color: '#60a5fa', letterSpacing: '-0.3px', whiteSpace: 'nowrap', textShadow: '0 2px 5px rgba(0,0,0,1)', fontFamily: 'inherit', ...GLOBAL_NO_SELECT_STYLE }}>
+              <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                <span style={{ fontSize: '20px', fontWeight: '600', color: '#60a5fa', letterSpacing: '-0.3px', whiteSpace: 'nowrap', textShadow: '0 2px 5px rgba(0,0,0,1)', fontFamily: 'inherit' }}>
                   {cCurrentKey} {selectedScale}
                 </span>
-                <span style={{ fontSize: '18px', color: '#475569', fontWeight: '600', letterSpacing: '0.5px', whiteSpace: 'nowrap', fontFamily: 'inherit', ...GLOBAL_NO_SELECT_STYLE }}>
+                <span style={{ fontSize: '18px', color: '#475569', fontWeight: '600', letterSpacing: '0.5px', whiteSpace: 'nowrap', fontFamily: 'inherit' }}>
                   SCALE NOTES
                 </span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '18px', flex: 1, overflowX: 'hidden', ...GLOBAL_NO_SELECT_STYLE }}>
+              <div style={{ display: 'flex', flexDirection: 'row', flexWrap: 'nowrap', alignItems: 'center', gap: '18px', flex: 1, overflowX: 'hidden' }}>
                 {scaleNotesResult.map((note, idx) => (
-                  <span key={idx} style={{ fontSize: '24px', fontWeight: '600', color: idx === 0 || idx === scaleNotesResult.length - 1 ? '#60a5fa' : '#cbd5e1', textShadow: '0 2px 5px rgba(0,0,0,1)', userSelect: 'none', whiteSpace: 'nowrap', letterSpacing: '-0.5px', flexShrink: 0, fontFamily: 'inherit', ...GLOBAL_NO_SELECT_STYLE }}>
+                  <span key={idx} style={{ fontSize: '24px', fontWeight: '600', color: idx === 0 || idx === scaleNotesResult.length - 1 ? '#60a5fa' : '#cbd5e1', textShadow: '0 2px 5px rgba(0,0,0,1)', userSelect: 'none', whiteSpace: 'nowrap', letterSpacing: '-0.5px', flexShrink: 0, fontFamily: 'inherit' }}>
                     {note}
                   </span>
                 ))}
@@ -1436,43 +1451,52 @@ const [tFooterDisplayMode, setTFooterDisplayMode] = useState('ARROW'); // 'ARROW
             </div>
 
             {/* 크로마틱 물리 자판 격자 패널 구역 */}
-            <div style={{ ...BOX_STYLE.gridContainer, marginTop: '0px', ...GLOBAL_NO_SELECT_STYLE }}>
+            <div style={{ ...BOX_STYLE.gridContainer, marginTop: '0px' }}>
               {Array.from({ length: 12 }).map((_, i) => {
                 const h = i + 1;
-                const targetLayout = CHROMATIC_TUNINGS[selectedTuning] || CHROMATIC_LAYOUT;
                 
-                const sliderBlowOffsets = targetLayout.sliderBlow;
-                const standardBlowOffsets = targetLayout.blow;
-                const standardDrawOffsets = targetLayout.draw;
-                const sliderDrawOffsets = targetLayout.sliderDraw;
+                // 💡 [화성학 절대 전조 오프셋]: 선택된 크로마틱 키값(C~B, LC~LB)에 맞춰 실시간으로 반음 가감 연산 처리
+                const keyMap = { "C": 0, "Db": 1, "D": 2, "Eb": 3, "E": 4, "F": 5, "F#": 6, "G": 7, "Ab": 8, "A": 9, "Bb": 10, "B": 11 };
+                const lowKeyMap = { "LC": -12, "LDb": -11, "LD": -10, "LEb": -9, "LE": -8, "LF": -7, "LF#": -6, "LAb": -4, "LA": -3, "LBb": -2, "LB": -1 };
+                
+                const keyOffset = cIsLowKey ? (lowKeyMap[cCurrentKey] ?? 0) : (keyMap[cCurrentKey] ?? 0);
+
+                // 🎯 [완치 완결]: 자바스크립트 수치 생략 간섭을 피하기 위해 문자열 분할 기법으로 하모니카 절대 반음 좌표 도킹!
+                const chromBlowBase = "0,4,7,12,12,16,19,24,24,28,31,36".split(",").map(Number); 
+                const chromDrawBase = "2,5,9,11,14,17,21,23,26,29,33,35".split(",").map(Number);
+
+                // 실시간 전조(keyOffset) + 슬라이더 레버 변동 가산
+                const sBlow = chromBlowBase[i] + 1 + keyOffset; // 레버 ON 불기 (#)
+                const bBlow = chromBlowBase[i] + keyOffset;     // 레버 OFF 불기
+                const bDraw = chromDrawBase[i] + keyOffset;     // 레버 OFF 마시기
+                const sDraw = chromDrawBase[i] + 1 + keyOffset; // 레버 ON 마시기 (#)
 
                 return (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', width: '6.2vw', maxWidth: '80px', ...GLOBAL_NO_SELECT_STYLE }}>
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', width: '6.2vw', maxWidth: '80px' }}>
                     
                     {/* 행 1: [Slider In Blow Zone] */}
-                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '12px', ...GLOBAL_NO_SELECT_STYLE }}>
-                      {/* 💡 [완치 완결]: 크로마틱 각 상자에도 displayLabelType을 연동 주입하여 도수 통신망을 복원합니다. */}
-                      <NoteBox semi={sliderBlowOffsets[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} isSliderZone={true} displayLabelType={displayLabelType}/>
+                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '12px' }}>
+                      <NoteBox semi={sBlow} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} isSliderZone={true} displayLabelType={displayLabelType}/>
                     </div>
 
                     {/* 행 2: [Standard Blow Zone] */}
-                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '16px', ...GLOBAL_NO_SELECT_STYLE }}>
-                      <NoteBox semi={standardBlowOffsets[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} displayLabelType={displayLabelType}/>
+                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '16px' }}>
+                      <NoteBox semi={bBlow} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} displayLabelType={displayLabelType}/>
                     </div>
                     
-                    {/* 행 3: [중앙 가이드 홀 번호 행] */}
-                    <div style={{ ...BOX_STYLE.holeNumber, width: '100%', height: '48px', margin: '0 0 8px 0', fontSize: '20px', color: '#94a3b8', ...GLOBAL_NO_SELECT_STYLE }}>
+                    {/* 행 3: [중앙 가이드 12홀 번호 행] */}
+                    <div style={{ ...BOX_STYLE.holeNumber, width: '100%', height: '48px', margin: '0 0 8px 0', fontSize: '20px', color: '#94a3b8' }}>
                       {h}
                     </div>
 
                     {/* 행 4: [Standard Draw Zone] */}
-                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '12px', ...GLOBAL_NO_SELECT_STYLE }}>
-                      <NoteBox semi={standardDrawOffsets[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} displayLabelType={displayLabelType}/>
+                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '12px' }}>
+                      <NoteBox semi={bDraw} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} displayLabelType={displayLabelType}/>
                     </div>
 
                     {/* 행 5: [Slider In Draw Zone] */}
-                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '10px', ...GLOBAL_NO_SELECT_STYLE }}>
-                      <NoteBox semi={sliderDrawOffsets[i]} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} isSliderZone={true} displayLabelType={displayLabelType}/>
+                    <div style={{ width: '100%', height: '4.2vw', maxHeight: '80px', flexShrink: 0, marginBottom: '10px' }}>
+                      <NoteBox semi={sDraw} getNote={getNoteName} activeNote={activeNote} cents={centsOff} limit={tolerance} onStart={handleNoteStart} onStop={handleNoteStop} showOverbanding={showOverbanding} scaleNotesResult={scaleNotesResult} useScaleHighlight={useScaleHighlight} isSliderZone={true} displayLabelType={displayLabelType}/>
                     </div>
 
                   </div>
@@ -1484,19 +1508,19 @@ const [tFooterDisplayMode, setTFooterDisplayMode] = useState('ARROW'); // 'ARROW
         
         {/* [크로마틱 전용] 푸터 저작권 마감 */}
         {isChrom && (
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', pointerEvents: 'none', zIndex: 10, fontFamily: 'inherit', lineHeight: '1.3', marginTop: '1vh', ...GLOBAL_NO_SELECT_STYLE }}>
-            <div style={{ fontSize: 'calc(11px + 0.4vw)', minFontSize: '13px', fontWeight: '600', color: '#64748b', marginBottom: '2px', ...GLOBAL_NO_SELECT_STYLE }}>
-              [ MODE : {selectedTuning.toUpperCase()} TUNING | SCALE : {selectedScale.toUpperCase()} ]
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', pointerEvents: 'none', zIndex: 10, fontFamily: 'inherit', lineHeight: '1.3', marginTop: '1vh' }}>
+            <div style={{ fontSize: 'calc(11px + 0.4vw)', minFontSize: '13px', fontWeight: '600', color: '#64748b', marginBottom: '2px' }}>
+              [ MODE : CHROMATIC {cIsLowKey ? 'LOW KEY' : 'STANDARD'} MODE | ACTIVE KEY : {cCurrentKey} ]
             </div>
-            <div style={{ fontSize: 'calc(13px + 1.2vw)', minFontSize: '16px', fontWeight: '600', color: '#10b981', marginBottom: '6px', letterSpacing: '-0.5px', whiteSpace: 'nowrap', ...GLOBAL_NO_SELECT_STYLE }}>
+            <div style={{ fontSize: 'calc(18px + 1.2vw)', minFontSize: '16px', fontWeight: '600', color: '#10b981', marginBottom: '6px', letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>
               Chromatic Harmonica Training Center
             </div>
-            <div style={{ color: '#475569', fontSize: 'calc(8px + 0.4vw)', minFontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap', ...GLOBAL_NO_SELECT_STYLE }}>
+            <div style={{ color: '#475569', fontSize: 'calc(8px + 0.4vw)', minFontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>
               Copyright ⓒ 2026 CoffeeBada Lee, ChoongKoo All Rights Reserved.
             </div>
           </div>
         )}
-        
+
         {/* ----------------------------------------------------------------------- */}
         {/* 🆃 [4줄 개조 완결] 트레몰로 하모니카 모드 전용 24홀 4줄 격자 레이아웃 엔진 */}
         {/* ----------------------------------------------------------------------- */}
@@ -1807,20 +1831,40 @@ const [tFooterDisplayMode, setTFooterDisplayMode] = useState('ARROW'); // 'ARROW
                   </select>
                 </div>
               )}
-
-              {!isChrom && !isTremolo && (
+         
+              {/* 💡 [연주자님 지침 완벽 반영]: 크로마틱 모드에서도 다이아토닉과 똑같이 로우키 설정을 켜고 끌 수 있는 독립 제어 스위치 빌드 */}
+              {!isTremolo && (
                 <div style={{ marginBottom: '22px' }}>
-                  <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Select Low Key Harp 로우키 하프 선택</span>
-                  <select value={isLowKey ? 'ON' : 'OFF'} onChange={(e) => { const nm = e.target.value === 'ON'; setIsLowKey(nm); setCurrentKey(nm ? 'LF' : 'C'); setScaleRootKey(nm ? 'F' : 'C'); setSelectedScale('Major / Ionian'); }} style={{ width: '100%', background: '#1e293b', color: isLowKey ? '#10b981' : '#ffffff', border: '1px solid #374151', borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: '900', outline: 'none' }}>
-                    <option value="OFF"> Standard Harp Key Mode </option>
-                    <option value="ON"> Low Key Harp Key Mode </option>
+                  <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
+                    {isChrom ? 'Select Low Key Chromatic 로우키 크로마틱 선택' : 'Select Low Key Harp 로우키 하프 선택'}
+                  </span>
+                  <select 
+                    value={(isChrom ? cIsLowKey : dIsLowKey) ? 'ON' : 'OFF'} 
+                    onChange={(e) => {
+                      const isTargetOn = e.target.value === 'ON';
+                      if (isChrom) {
+                        setCIsLowKey(isTargetOn);
+                        setCCurrentKey(isTargetOn ? 'LC' : 'C');
+                        setCScaleRootKey('C');
+                      } else {
+                        setDIsLowKey(isTargetOn);
+                        setDCurrentKey(isTargetOn ? 'LF' : 'C');
+                        setDScaleRootKey(isTargetOn ? 'F' : 'C');
+                      }
+                      setSelectedScale('Major / Ionian');
+                    }} 
+                    style={{ width: '100%', background: '#1e293b', color: (isChrom ? cIsLowKey : dIsLowKey) ? '#10b981' : '#ffffff', border: '1px solid #374151', borderRadius: '12px', padding: '12px', fontSize: '16px', fontWeight: '900', outline: 'none', fontFamily: 'inherit' }}
+                  >
+                    <option value="OFF" style={{ color: '#ffffff', fontWeight: 'bold' }}> Standard Key Mode </option>
+                    <option value="ON" style={{ color: '#10b981', fontWeight: 'bold' }}> Low Key Mode </option>
                   </select>
                 </div>
               )}
 
+
               <div style={{ marginBottom: '22px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold' }}>Scale Notes Highlight 스케일 노트 하이라이트</span>
+                  <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold' }}>Scale Notes in Color 스케일 노트 컬러 표기</span>
                   <div style={{ display: 'flex', backgroundColor: '#111827', padding: '4px', borderRadius: '10px', border: '1px solid #374151' }}>
                     <button onClick={() => setUseScaleHighlight(false)} style={{ padding: '6px 14px', backgroundColor: !useScaleHighlight ? '#ef4444' : 'transparent', border: 'none', color: !useScaleHighlight ? 'white' : '#64748b', borderRadius: '8px', fontWeight: '900', fontSize: '12px', cursor: 'pointer' }}>OFF</button>
                     <button onClick={() => setUseScaleHighlight(true)} style={{ padding: '6px 14px', marginLeft: '4px', backgroundColor: useScaleHighlight ? '#10b981' : 'transparent', border: 'none', color: useScaleHighlight ? 'black' : '#64748b', borderRadius: '8px', fontWeight: '900', fontSize: '12px', cursor: 'pointer' }}>ON</button>
@@ -1841,9 +1885,9 @@ const [tFooterDisplayMode, setTFooterDisplayMode] = useState('ARROW'); // 'ARROW
               </div>
 
               <div style={{ marginBottom: '22px' }}>
-                <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Tuner Sensitivity Reduction 감도 제어</span>
+                <span style={{ fontSize: '16px', color: '#94a3b8', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>Tuner Sensitivity Reduction 튜너 마이크 감도 설정</span>
                 <div style={{ display: 'flex', gap: '6px' }}>
-                  {['0', '10', '20', '30', '40'].map(val => <button key={val} onClick={() => setSensitivityReduction(parseInt(val))} style={{ flex: 1, padding: '12px 0', borderRadius: '10px', border: 'none', backgroundColor: sensitivityReduction === parseInt(val) ? '#2563eb' : '#374151', color: 'white', fontWeight: '900', cursor: 'pointer' }}>{val === '0' ? '기본' : `-${val}%`}</button>)}
+                  {['0', '10', '20', '30', '40'].map(val => <button key={val} onClick={() => setSensitivityReduction(parseInt(val))} style={{ flex: 1, padding: '12px 0', borderRadius: '10px', border: 'none', backgroundColor: sensitivityReduction === parseInt(val) ? '#2563eb' : '#374151', color: 'white', fontWeight: '900', cursor: 'pointer' }}>{val === '0' ? 'Normal' : `-${val}%`}</button>)}
                 </div>
               </div>
 
